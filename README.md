@@ -6,6 +6,9 @@ This repo currently implements **pipeline 1, the base VLM** (`A = VLM(I, Q)`) on
 backend: OpenAI, Anthropic, Gemini, OpenRouter, a local OpenAI-compatible server (vLLM / SGLang /
 Ollama), or in-process HF transformers.
 
+Background: [docs/PROPOSAL.md](docs/PROPOSAL.md) (project plan and timeline) and
+[docs/VISUALOVERLOAD_NOTES.md](docs/VISUALOVERLOAD_NOTES.md) (benchmark facts and open design questions).
+
 ## Setup
 
 ```bash

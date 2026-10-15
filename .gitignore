@@ -10,3 +10,9 @@ __pycache__/
 # dataset cache and run outputs
 data/
 runs/
+# (the next two also cover data/runs symlinked to scratch storage)
+/data
+/runs
+
+# local reference copies of upstream code
+third_party/
