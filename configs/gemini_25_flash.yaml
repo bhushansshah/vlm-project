@@ -1,0 +1,9 @@
+# Gemini direct (google-genai SDK). Needs GEMINI_API_KEY. Safety filters off, as in the paper.
+model: gemini:gemini-2.5-flash
+model_options:
+  media_resolution: null    # e.g. MEDIA_RESOLUTION_HIGH to raise the per-image token budget
+prompt: default
+generation:
+  extra:
+    thinking_config: {thinking_budget: 0}   # no thinking, like the paper's baseline
+concurrency: 8

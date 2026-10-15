@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# secrets
+.env
+
+# dataset cache and run outputs
+data/
+runs/

@@ -1,0 +1,9 @@
+# Claude via OpenRouter with reasoning disabled (the paper's baseline used no reasoning modes).
+# OpenRouter turns reasoning on by default for some models; this passes its unified `reasoning` param.
+model: openrouter:anthropic/claude-haiku-5.5
+prompt: default
+generation:
+  max_tokens: 1024
+  extra:
+    reasoning: {enabled: false}
+concurrency: 8

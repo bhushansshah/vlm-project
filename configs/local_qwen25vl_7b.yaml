@@ -1,0 +1,8 @@
+# In-process HF transformers on a GPU node (paper: 61.5% total). Greedy, 512 new tokens, bf16.
+model: local:Qwen/Qwen2.5-VL-7B-Instruct
+model_options:
+  dtype: bfloat16
+  attn_implementation: sdpa        # flash_attention_2 if installed
+  # processor_kwargs: {max_pixels: 12845056}   # Qwen default (~3584^2); lower it to save memory
+prompt: default
+batch_size: 1

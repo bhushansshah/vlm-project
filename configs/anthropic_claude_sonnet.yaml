@@ -1,0 +1,7 @@
+# Anthropic direct (Messages API). Needs ANTHROPIC_API_KEY.
+# Images > 5 MB are re-encoded to fit the API limit (logged); thinking is off unless set in `extra`.
+model: anthropic:claude-sonnet-5-5
+prompt: default
+generation:
+  max_tokens: 1024
+concurrency: 8
