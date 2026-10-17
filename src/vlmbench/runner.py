@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import random
 import threading
 import time
@@ -47,6 +48,7 @@ class RunConfig:
     max_retries: int = 5
     retry_errors: bool = False  # re-run questions whose previous attempt errored
     # dataset selection
+    dataset: str = "visualoverload"
     data_dir: str | None = None
     categories: list[str] | None = None
     difficulties: list[str] | None = None
@@ -58,7 +60,8 @@ class RunConfig:
         if self.run_name:
             return self.run_name
         safe = self.model.replace("/", "_").replace(":", "__")
-        return f"{safe}__{self.prompt}"
+        name = f"{safe}__{self.prompt}"
+        return name if self.dataset == "visualoverload" else f"{self.dataset}__{name}"
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -66,7 +69,7 @@ class RunConfig:
         return d
 
     # Fields that change what a response *means*; resuming across a change would mix results.
-    IDENTITY_FIELDS = ("model", "model_options", "generation", "prompt")
+    IDENTITY_FIELDS = ("dataset", "model", "model_options", "generation", "prompt")
 
 
 def read_records(path: Path) -> dict[str, dict]:
@@ -142,6 +145,9 @@ class Runner:
         )
         text = comp.text if comp else None
         ex = extract(text, s.question_type, s.options) if text is not None else None
+        correct = None
+        if s.answer is not None:  # public labels: score locally; errors/unparsed count as wrong
+            correct = bool(ex and ex.parsed and str(ex.value).upper() == s.answer.upper())
         return {
             "question_id": s.question_id,
             "image_id": s.image_id,
@@ -152,6 +158,8 @@ class Runner:
             "response": text,
             "extracted": ex.value if ex else None,
             "parsed": ex.parsed if ex else False,
+            "answer": s.answer,
+            "correct": correct,
             "finish_reason": comp.finish_reason if comp else None,
             "usage": asdict(comp.usage) if comp else None,
             "latency_s": round(latency, 3),
@@ -266,8 +274,11 @@ def summarize(records: dict[str, dict]) -> dict:
         if not r["error"]:
             latencies.append(r["latency_s"])
     latencies.sort()
-    return {
-        "n_questions": n,
+    summary = {"n_questions": n}
+    scored = [r for r in records.values() if r.get("correct") is not None]
+    if scored:
+        summary["accuracy"] = _accuracy(scored)
+    summary.update({
         "n_errors": sum(c["error"] for c in by_cat.values()),
         "error_types": dict(errors),
         "parse_rate": round(sum(c["parsed"] for c in by_cat.values()) / n, 4) if n else None,
@@ -282,6 +293,38 @@ def summarize(records: dict[str, dict]) -> dict:
             "median": latencies[len(latencies) // 2] if latencies else None,
             "p95": latencies[int(len(latencies) * 0.95)] if latencies else None,
         },
-        "note": "Ground truth is private: submit submission.json to "
-                "https://huggingface.co/spaces/paulgavrikov/visualoverload-submit for accuracy.",
-    }
+    })
+    if not scored:
+        summary["note"] = ("Ground truth is private: submit submission.json to "
+                           "https://huggingface.co/spaces/paulgavrikov/visualoverload-submit for accuracy.")
+    return summary
+
+
+def _wilson(k: int, n: int, z: float = 1.96) -> list[float]:
+    """95% Wilson interval for a proportion, in percent."""
+    if n == 0:
+        return [0.0, 0.0]
+    p = k / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return [round(100 * (centre - half), 1), round(100 * (centre + half), 1)]
+
+
+def _accuracy(scored: list[dict]) -> dict:
+    """Accuracy overall, per category and per category group ("Perception/OCR" -> "Perception").
+    Errored or unparseable answers count as wrong."""
+    def block(rs: list[dict]) -> dict:
+        k = sum(r["correct"] for r in rs)
+        return {"n": len(rs), "correct": k, "acc": round(100 * k / len(rs), 2), "ci95": _wilson(k, len(rs))}
+
+    by_cat: dict[str, list[dict]] = defaultdict(list)
+    by_group: dict[str, list[dict]] = defaultdict(list)
+    for r in scored:
+        by_cat[r["category"]].append(r)
+        if "/" in r["category"]:
+            by_group[r["category"].split("/")[0]].append(r)
+    out = {"overall": block(scored)}
+    if by_group:
+        out["per_group"] = {g: block(rs) for g, rs in sorted(by_group.items())}
+    out["per_category"] = {c: block(rs) for c, rs in sorted(by_cat.items())}
+    return out

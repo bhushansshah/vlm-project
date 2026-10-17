@@ -1,0 +1,13 @@
+# TreeBench base pipeline (P1): Qwen3.8-27B (dense) via OpenRouter.
+# Direct answer, no thinking, greedy. Pinned to unquantized (bf16) providers so the
+# result doesn't depend on which provider OpenRouter routes to.
+dataset: treebench
+model: openrouter:qwen/qwen3.8-27b
+prompt: default
+generation:
+  temperature: 0
+  max_tokens: 1024
+  extra:
+    reasoning: {enabled: false}
+    provider: {quantizations: [bf16], require_parameters: true}
+concurrency: 8

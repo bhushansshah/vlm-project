@@ -229,3 +229,50 @@ def test_normalize_markdown(resp, expected):
 
 def test_markdown_ocr_extracts_clean():
     assert extract("**1557**", "ocr").value == "1557"
+
+
+# ------------------------------------------------------------------ TreeBench
+def _treebench_tsv(path, image_path):
+    import base64
+    import csv
+    b64 = base64.b64encode(open(image_path, "rb").read()).decode()
+    cols = ["index", "image", "question", "answer", "multi-choice options", "category", "l2-category",
+            "target_instances", *"ABCDEFGHIJK"]
+    rows = [
+        {"index": "0", "image": b64, "question": "What color is the cup?", "answer": "B",
+         "multi-choice options": "A. Red\nB. Blue", "category": "Perception/Attributes",
+         "l2-category": "Perception/Attributes", "target_instances": "[[1, 2, 30, 40]]", "A": "Red", "B": "Blue"},
+        {"index": "1", "image": b64, "question": "Recognize the question and options in the image and answer it.",
+         "answer": "A", "multi-choice options": "A. Left\nB. Right\nC. Front", "category": "Perception/OCR",
+         "l2-category": "Perception/OCR", "target_instances": "[[5, 5, 50, 20]]"},
+    ]
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=cols, delimiter="\t")
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: r.get(c, "") for c in cols})
+
+
+def test_treebench_prepare_and_local_scoring(tmp_path, image_path):
+    from vlmbench import treebench
+    from vlmbench.data import load_samples
+    tsv = tmp_path / "TreeBench.tsv"
+    _treebench_tsv(tsv, image_path)
+    data_dir = treebench.prepare(tmp_path / "tb", tsv_path=tsv)
+    s = {x.question_id: x for x in load_samples(data_dir, dataset="treebench")}
+    assert set(s) == {"tb000", "tb001"}
+    assert s["tb000"].options == ("Red", "Blue") and s["tb000"].answer == "B"
+    assert s["tb000"].target_boxes == ((1, 2, 30, 40),)
+    assert "B. Blue" in s["tb000"].default_prompt
+    # OCR rows: options come from the "multi-choice options" field but stay out of the prompt
+    assert s["tb001"].options == ("Left", "Right", "Front") and "Left" not in s["tb001"].default_prompt
+
+    cfg = RunConfig(model="dummy:echo", dataset="treebench", output_dir=str(tmp_path), concurrency=1)
+    Runner(load_model(cfg.model), cfg).run(list(s.values()))
+    recs = read_records(tmp_path / cfg.resolved_run_name() / "responses.jsonl")
+    assert cfg.resolved_run_name().startswith("treebench__")
+    assert all(r["correct"] in (True, False) for r in recs.values())
+    summary = json.loads((tmp_path / cfg.resolved_run_name() / "summary.json").read_text())
+    acc = summary["accuracy"]
+    assert acc["overall"]["n"] == 2 and set(acc["per_group"]) == {"Perception"}
+    assert "note" not in summary

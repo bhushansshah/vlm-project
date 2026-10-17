@@ -1,4 +1,4 @@
-"""VisualOverload dataset loading.
+"""Dataset loading: VisualOverload here, TreeBench via ``treebench.py`` (same on-disk layout).
 
 The HF dataset stores the full ~4K painting with every one of its ~18 questions
 (~9.4 GB decoded). ``prepare`` extracts each painting to disk once and writes a
@@ -20,12 +20,13 @@ from typing import Iterable
 log = logging.getLogger(__name__)
 
 HF_DATASET = "paulgavrikov/visualoverload"
-CATEGORIES = ("activity", "attributes", "counting", "ocr", "reasoning", "scene")
+DATASETS = ("visualoverload", "treebench")
+CATEGORIES = ("activity", "attributes", "counting", "ocr", "reasoning", "scene")  # VisualOverload
 DIFFICULTIES = ("easy", "medium", "hard")
 
 
-def default_data_dir() -> Path:
-    return Path(os.environ.get("VLMBENCH_DATA_DIR", "data")) / "visualoverload"
+def default_data_dir(dataset: str = "visualoverload") -> Path:
+    return Path(os.environ.get("VLMBENCH_DATA_DIR", "data")) / dataset
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,8 @@ class Sample:
     difficulty: str
     category: str
     default_prompt: str
+    answer: str | None = None  # public ground truth (TreeBench); None when private (VisualOverload)
+    target_boxes: tuple[tuple[float, ...], ...] = ()  # evidence boxes [x1, y1, x2, y2], if released
 
     @property
     def image_id(self) -> str:
@@ -46,6 +49,7 @@ class Sample:
     def meta(self) -> dict:
         d = asdict(self)
         d["options"] = list(self.options)
+        d["target_boxes"] = [list(b) for b in self.target_boxes]
         return d
 
 
@@ -57,8 +61,14 @@ def _parse_options(raw) -> tuple[str, ...]:
     return tuple(ast.literal_eval(raw))  # stored as a stringified Python list
 
 
-def prepare(data_dir: Path | None = None, force: bool = False) -> Path:
+def prepare(data_dir: Path | None = None, force: bool = False, dataset: str = "visualoverload") -> Path:
     """Download the dataset from the HF hub and extract images + question index."""
+    if dataset == "treebench":
+        from . import treebench
+        return treebench.prepare(Path(data_dir or default_data_dir(dataset)), force=force)
+    if dataset != "visualoverload":
+        raise ValueError(f"Unknown dataset {dataset!r}. Available: {DATASETS}")
+
     from datasets import Image as HFImage
     from datasets import load_dataset
     from tqdm import tqdm
@@ -108,11 +118,12 @@ def load_samples(
     question_ids: Iterable[str] | None = None,
     limit: int | None = None,
     shuffle_seed: int | None = None,
+    dataset: str = "visualoverload",
 ) -> list[Sample]:
     """Load (a filtered subset of) the benchmark. Prepares the dataset on first use."""
-    data_dir = Path(data_dir or default_data_dir())
+    data_dir = Path(data_dir or default_data_dir(dataset))
     if not (data_dir / "questions.jsonl").exists():
-        prepare(data_dir)
+        prepare(data_dir, dataset=dataset)
 
     cats = set(categories) if categories else None
     diffs = set(difficulties) if difficulties else None
@@ -137,6 +148,8 @@ def load_samples(
                 difficulty=r["difficulty"],
                 category=r["category"],
                 default_prompt=r["default_prompt"],
+                answer=r.get("answer"),
+                target_boxes=tuple(tuple(b) for b in r.get("target_boxes") or ()),
             ))
     if shuffle_seed is not None:
         random.Random(shuffle_seed).shuffle(samples)

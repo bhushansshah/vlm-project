@@ -1,6 +1,7 @@
 """Command line interface.
 
     vlmbench prepare                                   # download + extract the dataset once
+    vlmbench prepare --dataset treebench               # same for TreeBench (public labels)
     vlmbench run --model openai:gpt-5-mini --limit 20  # quick smoke run
     vlmbench run --config configs/qwen25vl_7b_local.yaml
     vlmbench finalize runs/<run_name>                  # rebuild submission.json / summary.json
@@ -17,7 +18,7 @@ from typing import Any
 
 import yaml
 
-from .data import CATEGORIES, DIFFICULTIES, load_samples, prepare
+from .data import DATASETS, DIFFICULTIES, load_samples, prepare
 from .models import available_providers, load_model
 from .runner import RunConfig, Runner, finalize
 from .types import GenerationConfig
@@ -42,7 +43,7 @@ def build_config(args: argparse.Namespace) -> RunConfig:
 
     # CLI flags override the config file
     overrides = {
-        "model": args.model, "prompt": args.prompt, "run_name": args.run_name,
+        "model": args.model, "prompt": args.prompt, "run_name": args.run_name, "dataset": args.dataset,
         "output_dir": args.output_dir, "concurrency": args.concurrency, "batch_size": args.batch_size,
         "max_retries": args.max_retries, "data_dir": args.data_dir, "categories": args.categories,
         "difficulties": args.difficulties, "limit": args.limit, "shuffle_seed": args.shuffle_seed,
@@ -68,7 +69,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     cfg = build_config(args)
     samples = load_samples(
         Path(cfg.data_dir) if cfg.data_dir else None, cfg.categories, cfg.difficulties,
-        cfg.question_ids, cfg.limit, cfg.shuffle_seed,
+        cfg.question_ids, cfg.limit, cfg.shuffle_seed, dataset=cfg.dataset,
     )
     if not samples:
         raise SystemExit("No questions match the selection")
@@ -78,14 +79,18 @@ def cmd_run(args: argparse.Namespace) -> None:
     print(json.dumps(summary, indent=2))
     print(f"\nRun directory: {run_dir}")
     if summary["n_errors"]:
-        print(f"WARNING: {summary['n_errors']} questions errored; re-run with --retry-errors before submitting.")
+        print(f"WARNING: {summary['n_errors']} questions errored (scored as wrong); re-run with --retry-errors.")
+    if "accuracy" in summary:
+        acc = summary["accuracy"]["overall"]
+        print(f"Accuracy: {acc['acc']}% ({acc['correct']}/{acc['n']}, 95% CI {acc['ci95']})")
+        return
     if len(samples) < 2720:
         print(f"NOTE: subset of {len(samples)}/2720 questions; the evaluation server scores missing ones as wrong.")
     print(f"Submit {run_dir / 'submission.json'} at https://huggingface.co/spaces/paulgavrikov/visualoverload-submit")
 
 
 def cmd_prepare(args: argparse.Namespace) -> None:
-    path = prepare(Path(args.data_dir) if args.data_dir else None, force=args.force)
+    path = prepare(Path(args.data_dir) if args.data_dir else None, force=args.force, dataset=args.dataset)
     print(f"Dataset ready at {path}")
 
 
@@ -105,7 +110,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    pp = sub.add_parser("prepare", help="download and extract the VisualOverload dataset")
+    pp = sub.add_parser("prepare", help="download and extract a dataset")
+    pp.add_argument("--dataset", choices=DATASETS, default="visualoverload")
     pp.add_argument("--data-dir")
     pp.add_argument("--force", action="store_true")
     pp.set_defaults(func=cmd_prepare)
@@ -128,8 +134,11 @@ def main(argv: list[str] | None = None) -> None:
     pr.add_argument("--batch-size", type=int, help="batch size (in-process local backend)")
     pr.add_argument("--max-retries", type=int)
     pr.add_argument("--retry-errors", action="store_true", help="re-run questions that errored before")
+    pr.add_argument("--dataset", choices=DATASETS, help="benchmark (default: visualoverload)")
     pr.add_argument("--data-dir")
-    pr.add_argument("--categories", nargs="+", choices=CATEGORIES)
+    pr.add_argument("--categories", nargs="+",
+                    help="VisualOverload: activity attributes counting ocr reasoning scene; "
+                         "TreeBench: e.g. Perception/OCR Reasoning/Ordering")
     pr.add_argument("--difficulties", nargs="+", choices=DIFFICULTIES)
     pr.add_argument("--question-ids", help="file with whitespace-separated question ids")
     pr.add_argument("--limit", type=int)
