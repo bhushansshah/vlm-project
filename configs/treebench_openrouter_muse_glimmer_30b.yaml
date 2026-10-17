@@ -1,13 +1,14 @@
 # TreeBench base pipeline (P1): Muse Glimmer 30B (dense) via OpenRouter.
-# Direct answer, no thinking, greedy. Pinned to unquantized (bf16) providers so the
-# result doesn't depend on which provider OpenRouter routes to.
+# This endpoint refuses requests with reasoning disabled ("Reasoning is mandatory"), so it
+# runs with the lowest effort and a larger token budget: NOT directly comparable to the
+# no-thinking runs. Greedy, pinned to unquantized (bf16) providers.
 dataset: treebench
 model: openrouter:meta/muse-glimmer-30b
 prompt: default
 generation:
   temperature: 0
-  max_tokens: 1024
+  max_tokens: 8192
   extra:
-    reasoning: {enabled: false}
+    reasoning: {effort: low}
     provider: {quantizations: [bf16], require_parameters: true}
 concurrency: 8
