@@ -276,3 +276,18 @@ def test_treebench_prepare_and_local_scoring(tmp_path, image_path):
     acc = summary["accuracy"]
     assert acc["overall"]["n"] == 2 and set(acc["per_group"]) == {"Perception"}
     assert "note" not in summary
+
+
+@pytest.mark.parametrize("resp,expected", [
+    ("B", "B"), ("**C**", "C"), ("(D)", "D"), ("<answer>B</answer>", "B"),
+    # the VisualOverload judge reads these as "A" (first letter anywhere in the text)
+    ("Above the cart is an umbrella; the top stripe is yellow.\n\nTherefore, the correct option is B.\n\nB", "B"),
+    ("Let's call this Person A. ... the direction is **Front right**.\n\nB", "B"),
+    ("Looking closely, the answer is **C**.", "C"),
+    ("Correct Option: **B**", "B"),
+    ("A detailed look shows nothing conclusive.", None),
+    ("The answer is F", None),  # not a valid option for 4 choices
+])
+def test_extract_choice_letter(resp, expected):
+    from vlmbench.extract import extract_choice_letter
+    assert extract_choice_letter(resp, 4) == expected

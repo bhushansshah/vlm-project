@@ -27,7 +27,7 @@ from typing import Any, Iterator
 from tqdm import tqdm
 
 from .data import Sample
-from .extract import extract, normalize_response
+from .extract import Extracted, extract, extract_choice_letter, normalize_response
 from .models import VLM, NonRetryableError
 from .prompts import build_messages
 from .types import Completion, GenerationConfig, TextPart
@@ -70,6 +70,18 @@ class RunConfig:
 
     # Fields that change what a response *means*; resuming across a change would mix results.
     IDENTITY_FIELDS = ("dataset", "model", "model_options", "generation", "prompt")
+
+
+def _score(s: Sample, text: str | None) -> tuple[Extracted | None, bool | None]:
+    """Extract the answer; with public labels also score it (errors/unparsed count as wrong).
+    Private-label datasets keep the server-faithful extraction; ones we score ourselves use the
+    stricter letter extraction so explanations are not misread."""
+    if text is None:
+        return None, (False if s.answer is not None else None)
+    if s.answer is None:
+        return extract(text, s.question_type, s.options), None
+    letter = extract_choice_letter(normalize_response(text), len(s.options))
+    return Extracted(letter or "", letter is not None), letter == s.answer.strip().upper()
 
 
 def read_records(path: Path) -> dict[str, dict]:
@@ -144,10 +156,7 @@ class Runner:
             p.text for m in build_messages(self.cfg.prompt, s) for p in m.content if isinstance(p, TextPart)
         )
         text = comp.text if comp else None
-        ex = extract(text, s.question_type, s.options) if text is not None else None
-        correct = None
-        if s.answer is not None:  # public labels: score locally; errors/unparsed count as wrong
-            correct = bool(ex and ex.parsed and str(ex.value).upper() == s.answer.upper())
+        ex, correct = _score(s, text)
         return {
             "question_id": s.question_id,
             "image_id": s.image_id,
@@ -233,8 +242,14 @@ def finalize(run_dir: Path, samples: list[Sample] | None = None) -> dict:
     """Write submission.json and summary.json from responses.jsonl."""
     records = read_records(run_dir / "responses.jsonl")
     if samples is not None:
-        wanted = {s.question_id for s in samples}
-        records = {k: v for k, v in records.items() if k in wanted}
+        by_id = {s.question_id: s for s in samples}
+        records = {k: v for k, v in records.items() if k in by_id}
+        for qid, r in records.items():  # re-score from the saved text, so scoring fixes need no API calls
+            s = by_id[qid]
+            if s.answer is not None:
+                ex, correct = _score(s, r["response"])
+                r.update(extracted=ex.value if ex else None, parsed=ex.parsed if ex else False,
+                         answer=s.answer, correct=correct)
     write_submission(records, run_dir / "submission.json")
     summary = summarize(records)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))

@@ -126,6 +126,33 @@ def normalize_response(response: str | None) -> str | None:
     return s
 
 
+_LONE_LETTER = re.compile(r"^[\s*_`(\[]*([A-K])[\s*_`)\].:]*$")
+_STATED = re.compile(r"(?:answer|option|choice)\s*(?:is|:|would be|=)?\s*[*_`\s]*\(?([A-K])\b(?![a-z'])",
+                     flags=re.IGNORECASE)
+
+
+def extract_choice_letter(response: str | None, n_options: int) -> str | None:
+    """The letter a free-form reply commits to, for benchmarks we score ourselves.
+
+    The VisualOverload judge (``clean_multiple_choice_answer``) falls back to the first option
+    letter appearing *anywhere* in the text, which misreads explanations ("Above the cart ...
+    so the answer is B" -> "A"). Here we only accept, in order: an <answer> tag, a reply that
+    is just a letter, the last line that is just a letter, or the last "answer/option is X".
+    """
+    if not response:
+        return None
+    valid = {chr(65 + i) for i in range(n_options)}
+    tagged = re.findall(r"<answer>(.*?)</answer>", response, flags=re.DOTALL)
+    text = tagged[-1] if tagged else response
+    for candidate in [text.strip()] + text.strip().splitlines()[::-1]:
+        m = _LONE_LETTER.match(candidate)
+        if m:
+            return m.group(1) if m.group(1) in valid else None
+    stated = [m.group(1).upper() for m in _STATED.finditer(text)]
+    stated = [s for s in stated if s in valid]
+    return stated[-1] if stated else None
+
+
 @dataclass
 class Extracted:
     value: str | int

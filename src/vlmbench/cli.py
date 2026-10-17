@@ -95,7 +95,12 @@ def cmd_prepare(args: argparse.Namespace) -> None:
 
 
 def cmd_finalize(args: argparse.Namespace) -> None:
-    print(json.dumps(finalize(Path(args.run_dir)), indent=2))
+    run_dir = Path(args.run_dir)
+    cfg = json.loads((run_dir / "config.json").read_text())
+    samples = None
+    if cfg.get("dataset", "visualoverload") != "visualoverload":  # public labels: re-score
+        samples = load_samples(Path(cfg["data_dir"]) if cfg.get("data_dir") else None, dataset=cfg["dataset"])
+    print(json.dumps(finalize(run_dir, samples), indent=2))
 
 
 def main(argv: list[str] | None = None) -> None:
