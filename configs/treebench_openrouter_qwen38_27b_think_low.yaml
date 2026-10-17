@@ -1,0 +1,14 @@
+# TreeBench base pipeline (P1): Qwen3.8-27B via OpenRouter, thinking ON at low effort
+# (matches the Muse Glimmer run, which cannot turn thinking off). Large token budget so
+# thinking isn't truncated. Greedy, pinned to unquantized (bf16) providers.
+dataset: treebench
+model: openrouter:qwen/qwen3.8-27b
+run_name: treebench__openrouter__qwen_qwen3.8-27b__default__think-low
+prompt: default
+generation:
+  temperature: 0
+  max_tokens: 16384
+  extra:
+    reasoning: {effort: low}
+    provider: {quantizations: [bf16], require_parameters: true}
+concurrency: 8

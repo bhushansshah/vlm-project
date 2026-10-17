@@ -287,7 +287,11 @@ def test_treebench_prepare_and_local_scoring(tmp_path, image_path):
     ("Correct Option: **B**", "B"),
     ("A detailed look shows nothing conclusive.", None),
     ("The answer is F", None),  # not a valid option for 4 choices
+    # letter + that option's own text on the last line (Gemma with thinking)
+    ("... located in front of her and to her left.\n\nA. Front left", "A"),
+    ("Therefore, the correct option is:\n**D. Back right**", "D"),
+    ("so it is on her left.\n\nB. Front left", None),  # letter and text disagree: don't guess
 ])
 def test_extract_choice_letter(resp, expected):
     from vlmbench.extract import extract_choice_letter
-    assert extract_choice_letter(resp, 4) == expected
+    assert extract_choice_letter(resp, ("Front left", "Front right", "Back left", "Back right")) == expected

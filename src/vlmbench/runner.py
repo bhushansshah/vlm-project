@@ -72,15 +72,19 @@ class RunConfig:
     IDENTITY_FIELDS = ("dataset", "model", "model_options", "generation", "prompt")
 
 
-def _score(s: Sample, text: str | None) -> tuple[Extracted | None, bool | None]:
+def _score(s: Sample, text: str | None, finish_reason: str | None = None
+           ) -> tuple[Extracted | None, bool | None]:
     """Extract the answer; with public labels also score it (errors/unparsed count as wrong).
     Private-label datasets keep the server-faithful extraction; ones we score ourselves use the
-    stricter letter extraction so explanations are not misread."""
+    stricter letter extraction so explanations are not misread, and a reply cut off by the
+    token limit counts as unanswered (its last line may be an option list, not a choice)."""
     if text is None:
         return None, (False if s.answer is not None else None)
     if s.answer is None:
         return extract(text, s.question_type, s.options), None
-    letter = extract_choice_letter(normalize_response(text), len(s.options))
+    if finish_reason == "length":
+        return Extracted("", False), False
+    letter = extract_choice_letter(normalize_response(text), s.options)
     return Extracted(letter or "", letter is not None), letter == s.answer.strip().upper()
 
 
@@ -156,7 +160,7 @@ class Runner:
             p.text for m in build_messages(self.cfg.prompt, s) for p in m.content if isinstance(p, TextPart)
         )
         text = comp.text if comp else None
-        ex, correct = _score(s, text)
+        ex, correct = _score(s, text, comp.finish_reason if comp else None)
         return {
             "question_id": s.question_id,
             "image_id": s.image_id,
@@ -247,7 +251,7 @@ def finalize(run_dir: Path, samples: list[Sample] | None = None) -> dict:
         for qid, r in records.items():  # re-score from the saved text, so scoring fixes need no API calls
             s = by_id[qid]
             if s.answer is not None:
-                ex, correct = _score(s, r["response"])
+                ex, correct = _score(s, r["response"], r.get("finish_reason"))
                 r.update(extracted=ex.value if ex else None, parsed=ex.parsed if ex else False,
                          answer=s.answer, correct=correct)
     write_submission(records, run_dir / "submission.json")
