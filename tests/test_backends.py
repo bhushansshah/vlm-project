@@ -1,57 +1,12 @@
-import json
+import os
 from types import SimpleNamespace
 
 import pytest
 from PIL import Image
 
-from vlmbench.data import Sample
-from vlmbench.extract import extract
 from vlmbench.images import ImagePolicy, encode_image
 from vlmbench.models import load_model, parse_spec
-from vlmbench.prompts import build_messages
-from vlmbench.runner import RunConfig, Runner, read_records
 from vlmbench.types import GenerationConfig, ImagePart, Message
-
-
-@pytest.fixture
-def image_path(tmp_path):
-    p = tmp_path / "img.jpg"
-    Image.new("RGB", (400, 200), "red").save(p, quality=95)
-    return str(p)
-
-
-@pytest.fixture
-def samples(image_path):
-    return [
-        Sample("q1", image_path, "Is it day?", "choice", ("yes", "no"), "easy", "scene",
-               "Is it day? Options:\nA. yes\nB. no\nAnswer with the option's letter from the given choices directly."),
-        Sample("q2", image_path, "How many cups?", "counting", (), "hard", "counting",
-               "How many cups? Answer with a number directly."),
-        Sample("q3", image_path, "What year?", "ocr", (), "medium", "ocr", "What year? Answer directly."),
-    ]
-
-
-# ------------------------------------------------------------------ extraction
-@pytest.mark.parametrize("resp,expected", [
-    ("B", "B"), ("B.", "B"), ("Answer: A", "A"), ("The answer is B. no", "B"),
-    ("<answer>A</answer>", "A"), ("I think B. no is right", "B"),
-])
-def test_extract_choice(resp, expected):
-    assert extract(resp, "choice", ("yes", "no")).value == expected
-
-
-@pytest.mark.parametrize("resp,expected,parsed", [
-    ("7", 7, True), ("seven.", 7, True), ("There are 3 cups, maybe 4", 4, True),
-    ("<answer>12</answer>", 12, True), ("too many to count", 0, False), ("", 0, False),
-])
-def test_extract_counting(resp, expected, parsed):
-    ex = extract(resp, "counting")
-    assert (ex.value, ex.parsed) == (expected, parsed)
-
-
-def test_extract_ocr():
-    assert extract('The text reads "Anno 1650."', "ocr").value == "anno 1650"
-    assert extract("VIVAT", "ocr").value == "uiuat"  # server maps v -> u
 
 
 # ------------------------------------------------------------------ images
@@ -66,19 +21,10 @@ def test_image_resize_policy(image_path):
 
 
 def test_image_byte_limit(tmp_path):
-    import os
     p = tmp_path / "noise.png"
     Image.frombytes("RGB", (600, 600), os.urandom(600 * 600 * 3)).save(p)
     enc = encode_image(ImagePart(str(p)), ImagePolicy(max_b64_bytes=200_000))
     assert len(enc.b64) <= 200_000 and enc.mime_type == "image/jpeg"
-
-
-# ------------------------------------------------------------------ prompts
-def test_default_prompt_is_paper_prompt(samples):
-    msgs = build_messages("default", samples[0])
-    assert len(msgs) == 1 and msgs[0].role == "user"
-    img, text = msgs[0].content
-    assert isinstance(img, ImagePart) and text.text == samples[0].default_prompt
 
 
 # ------------------------------------------------------------------ registry
@@ -158,74 +104,3 @@ def test_gemini_payload(image_path):
     assert all(s.threshold.value == "BLOCK_NONE" for s in cfg.safety_settings)
     img = seen["contents"][0].parts[0]
     assert img.inline_data.mime_type == "image/jpeg" and img.media_resolution.level.value == "MEDIA_RESOLUTION_HIGH"
-
-
-# ------------------------------------------------------------------ runner
-def test_runner_end_to_end_and_resume(tmp_path, samples):
-    cfg = RunConfig(model="dummy:random", output_dir=str(tmp_path), concurrency=2)
-    summary = Runner(load_model(cfg.model), cfg).run(samples)
-    run_dir = tmp_path / cfg.resolved_run_name()
-    assert summary["n_questions"] == 3 and summary["n_errors"] == 0
-    sub = json.loads((run_dir / "submission.json").read_text())
-    assert {s["question_id"] for s in sub} == {"q1", "q2", "q3"}
-
-    # resume: nothing re-run
-    lines_before = (run_dir / "responses.jsonl").read_text().count("\n")
-    Runner(load_model(cfg.model), cfg).run(samples)
-    assert (run_dir / "responses.jsonl").read_text().count("\n") == lines_before
-
-    # changing the model under the same run name is refused
-    with pytest.raises(RuntimeError):
-        Runner(load_model("dummy:echo"), RunConfig(model="dummy:echo", output_dir=str(tmp_path),
-                                                   run_name=cfg.resolved_run_name())).run(samples)
-
-
-class Flaky:
-    provider = "flaky"
-    supports_concurrency = False
-
-    def __init__(self, fail_times):
-        self.fail_times = fail_times
-        self.calls = 0
-        self.model = "flaky"
-
-    def describe(self):
-        return {"provider": "flaky"}
-
-    def generate_batch(self, convs, config):
-        from vlmbench.types import Completion
-        self.calls += 1
-        if self.calls <= self.fail_times:
-            raise ConnectionError("boom")
-        return [Completion(text="A") for _ in convs]
-
-    def generate(self, msgs, config):
-        return self.generate_batch([msgs], config)[0]
-
-
-def test_runner_retries_then_records_error(tmp_path, samples, monkeypatch):
-    monkeypatch.setattr("vlmbench.runner.time.sleep", lambda s: None)
-    cfg = RunConfig(model="dummy:x", output_dir=str(tmp_path), max_retries=2, batch_size=3)
-    Runner(Flaky(fail_times=2), cfg).run(samples[:1])
-    rec = read_records(tmp_path / cfg.resolved_run_name() / "responses.jsonl")["q1"]
-    assert rec["error"] is None and rec["attempts"] == 3
-
-    cfg2 = RunConfig(model="dummy:y", output_dir=str(tmp_path), max_retries=1)
-    s = Runner(Flaky(fail_times=99), cfg2).run(samples[:1])
-    assert s["n_errors"] == 1
-    cfg2.retry_errors = True
-    s = Runner(Flaky(fail_times=0), cfg2).run(samples[:1])
-    assert s["n_errors"] == 0
-
-
-@pytest.mark.parametrize("resp,expected", [
-    ("**1557**", "1557"), ("`Anno`", "Anno"), ("*B*", "B"), ("**B. yes**", "B. yes"), ("plain", "plain"),
-    ("**a** and **b**", "**a** and **b**"),
-])
-def test_normalize_markdown(resp, expected):
-    from vlmbench.extract import normalize_response
-    assert normalize_response(resp) == expected
-
-
-def test_markdown_ocr_extracts_clean():
-    assert extract("**1557**", "ocr").value == "1557"

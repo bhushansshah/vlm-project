@@ -1,0 +1,14 @@
+# VistaQA base-VLM run (model settings only; choose questions on the command line).
+# Balanced 600 subset: add --per-category 100 --sample-seed 0. Full benchmark: no selection flags.
+# Same as the other models EXCEPT reasoning: this endpoint rejects disabling reasoning
+# ("Reasoning is mandatory"), so we use the lowest effort and a larger token budget
+# (reasoning tokens count toward max_tokens).
+dataset: vistaqa
+model: openrouter:meta/muse-glimmer-30b
+prompt: default
+generation:
+  temperature: 0
+  max_tokens: 4096
+  extra:
+    reasoning: {effort: low}
+concurrency: 8

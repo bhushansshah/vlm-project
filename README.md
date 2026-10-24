@@ -1,9 +1,12 @@
-# vlmbench: VLM baselines and agents on VisualOverload
+# vlmbench: VLM baselines and agents on dense-scene VQA
 
 Course project: *Studying the Performance of VLM Agents on VQA Tasks for Dense Datasets*.
-This repo currently implements **pipeline 1, the base VLM** (`A = VLM(I, Q)`) on
-[VisualOverload](https://github.com/paulgavrikov/visualoverload) (CVPR 2026). It works with any
-backend: OpenAI, Anthropic, Gemini, OpenRouter, a local OpenAI-compatible server (vLLM / SGLang /
+This repo currently implements **pipeline 1, the base VLM** (`A = VLM(I, Q)`) on two benchmarks:
+
+- [VisualOverload](https://github.com/paulgavrikov/visualoverload) (CVPR 2026): 2,720 questions on dense paintings; ground truth is **private** (scored by the authors' server).
+- [VistaQA](https://vistaqa.github.io) (NeurIPS 2026 D&B): 1,157 free-form questions, six task types, six domains, 27% "trick" questions about things not in the image; answers are **public**, so we grade locally with an LLM judge.
+
+It works with any backend: OpenAI, Anthropic, Gemini, OpenRouter, a local OpenAI-compatible server (vLLM / SGLang /
 Ollama), or in-process HF transformers.
 
 ## Setup
@@ -13,11 +16,12 @@ uv venv --python 3.12 .venv && source .venv/bin/activate
 uv pip install -e ".[api,dev]"        # API backends
 uv pip install -e ".[local]"          # + torch/transformers for in-process local models
 cp .env.example .env                  # add the API keys you need
-vlmbench prepare                      # download + extract the dataset (~630 MB, once)
+vlmbench prepare                      # VisualOverload (~630 MB, once)
+vlmbench prepare --dataset vistaqa    # VistaQA (~440 MB, once)
 ```
 
-`prepare` writes the 150 paintings to `data/visualoverload/images/` plus a `questions.jsonl` index
-(2,720 questions). Set `VLMBENCH_DATA_DIR` to put the data on scratch storage instead.
+Each dataset goes to `data/<dataset>/` with a `questions.jsonl` index. Set `VLMBENCH_DATA_DIR` to put
+the data on scratch storage instead.
 
 ## Running the baseline
 
@@ -29,6 +33,22 @@ vlmbench run --model openrouter:qwen/qwen2.5-vl-72b-instruct --limit 20 --shuffl
 vlmbench run --config configs/openrouter_qwen25vl_72b.yaml
 vlmbench run --config configs/gemini_25_flash.yaml --categories counting ocr
 ```
+
+### VistaQA: run, judge, report
+
+```bash
+# balanced subset: 100 random questions per task type (seed 0), same 600 for every model
+vlmbench run --config configs/vistaqa/qwen3.8-27b.yaml --per-category 100 --sample-seed 0
+# full benchmark (1,157); questions already answered in the same run folder are skipped
+vlmbench run --config configs/vistaqa/qwen3.8-27b.yaml
+vlmbench judge runs/vistaqa__openrouter__qwen_qwen3.8-27b__default     # grade answers (cached, resumable)
+vlmbench report runs/vistaqa__* --out runs/vistaqa_report               # tables by task / domain / trick
+```
+
+The judge uses the authors' exact prompt and their default judge model (Qwen2.5-72B-Instruct, here via
+OpenRouter; `--judge <spec>` to change). We report their text-accuracy metric only: the GROVE metric also
+needs segmentation masks, which a plain VLM does not produce. `predictions.json` in each run is in the official
+evaluator's format (with empty masks).
 
 Model spec = `<provider>:<model>`:
 
@@ -44,28 +64,30 @@ Model spec = `<provider>:<model>`:
 
 Useful flags: `-o key=value` (backend option), `-g key=value` (provider-specific generation
 option, e.g. `-g 'reasoning={effort: low}'`), `--max-tokens`, `--temperature`, `--prompt`,
-`--concurrency` (API), `--batch-size` (local), `--categories`, `--difficulties`, `--limit`,
-`--question-ids FILE`, `--retry-errors`.
+`--concurrency` (API), `--batch-size` (local), `--retry-errors`.
+Question selection (combinable): `--dataset`, `--categories`, `--question-ids ID... | FILE`,
+`--filter KEY=V1,V2` (e.g. `--filter difficulty=hard`, `--filter domain=av,robotics`, `--filter hallucination=1`),
+`--per-category N`, `--limit N`, `--sample-seed S`.
 
 ### Outputs and scoring
 
 Each run writes `runs/<run_name>/`:
 
 - `config.json`: the full run configuration and backend description
-- `responses.jsonl`: one record per question with the raw response, extracted answer, finish reason, token usage, latency, and error
-- `submission.json`: what you upload to the evaluation server
-- `summary.json`: local diagnostics (errors, parse rate per category, answer-letter distribution, tokens)
+- `responses.jsonl`: one record per question with the raw response, finish reason, token usage, latency, and error
+- `summary.json`: errors, tokens, latency, plus dataset-specific diagnostics
+- VisualOverload: `submission.json` (upload to the evaluation server); VistaQA: `predictions.json`, and `judgments.jsonl` after `vlmbench judge`
 
 Runs are **resumable**: re-running the same command skips finished questions, so an interrupted or
 preempted job just continues. `--retry-errors` re-runs only the questions that failed.
 
-**Ground truth is private.** Accuracy comes only from the official evaluator:
+**VisualOverload ground truth is private.** Accuracy comes only from the official evaluator:
 upload `submission.json` at https://huggingface.co/spaces/paulgavrikov/visualoverload-submit
 (HF login; rate-limited per day, so don't burn submissions on partial runs: missing questions count as wrong).
-Locally we use a port of the server's answer extraction (`src/vlmbench/extract.py`), so the
+Locally we use a port of the server's answer extraction (`src/vlmbench/datasets/visualoverload_extract.py`), so the
 `parse_rate` in `summary.json` tells you whether the server will be able to read your answers.
 
-## Faithfulness to the paper's protocol
+## Faithfulness to the VisualOverload protocol
 
 - Prompt `default` = the dataset's `default_prompt` (the authors' prompts), image first, no system prompt.
 - Open-weight models: greedy decoding, `max_new_tokens=512`, processor-default resolution (as in the authors' `models.py`).
@@ -85,12 +107,14 @@ InternVL3-38B 67.6, Qwen2.5-VL-72B 65.7, Qwen2.5-VL-7B 61.5, random 16.0.
 ```
 src/vlmbench/
   types.py         Message / ImagePart / TextPart / GenerationConfig / Completion (provider-neutral)
-  data.py          dataset preparation + filtered loading -> Sample
-  prompts.py       prompt strategies (register new ones with @register_prompt)
   images.py        image encoding with explicit, logged resize / byte-limit policies
-  extract.py       answer extraction ported from the official judge
-  runner.py        concurrent / batched, resumable execution + submission & summary
+  runner.py        concurrent / batched, resumable execution + summary
+  retry.py         retries with backoff (shared by runner and judge)
+  judge.py         LLM-as-a-judge engine (prompt comes from the dataset)
+  report.py        accuracy tables by category and dataset-specific groups
   cli.py           `vlmbench` command
+  datasets/        one module per benchmark behind the Dataset interface (base.py):
+                   download, load, prompts, outputs, judge prompt; registry in __init__.py
   models/          one backend per provider behind the VLM interface; registry in __init__.py
 configs/           example run configs
 tests/             offline tests (SDK clients stubbed; no network)
@@ -99,7 +123,8 @@ tests/             offline tests (SDK clients stubbed; no network)
 Backends take a *list of multi-turn messages with any number of images*, not just `(image, question)`,
 so the upcoming tool-augmented and Python-interpreter agents (pipelines 2 and 3) can reuse them unchanged.
 To add a backend: subclass `VLM`, implement `generate(messages, config) -> Completion`, and register it in
-`models/__init__.py`.
+`models/__init__.py`. To add a benchmark: subclass `Dataset` (`prepare`, `load_all`, `prompts`, and
+optionally `judge_prompt` / `write_outputs`) and list it in `datasets/__init__.py`.
 
 ## On the cluster (Slurm)
 

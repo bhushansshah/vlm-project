@@ -1,9 +1,11 @@
 """Command line interface.
 
-    vlmbench prepare                                   # download + extract the dataset once
-    vlmbench run --model openai:gpt-5-mini --limit 20  # quick smoke run
-    vlmbench run --config configs/qwen25vl_7b_local.yaml
-    vlmbench finalize runs/<run_name>                  # rebuild submission.json / summary.json
+    vlmbench prepare --dataset vistaqa                     # download a benchmark once
+    vlmbench run --dataset vistaqa --model openrouter:qwen/qwen3.8-27b --per-category 100 --sample-seed 0
+    vlmbench run --config configs/vistaqa/qwen3.8-27b.yaml
+    vlmbench judge runs/<run_name>                         # grade answers (datasets with public answers)
+    vlmbench report runs/<run_a> runs/<run_b> --out runs/report
+    vlmbench finalize runs/<run_name>                      # rebuild summary / output files
 """
 
 from __future__ import annotations
@@ -17,10 +19,10 @@ from typing import Any
 
 import yaml
 
-from .data import CATEGORIES, DIFFICULTIES, load_samples, prepare
+from .datasets import DATASETS, get_dataset
 from .models import available_providers, load_model
-from .runner import RunConfig, Runner, finalize
-from .types import GenerationConfig
+from .judge import DEFAULT_JUDGE
+from .runner import RunConfig, Runner, finalize, load_run_config
 
 
 def _kv(items: list[str] | None) -> dict[str, Any]:
@@ -34,7 +36,28 @@ def _kv(items: list[str] | None) -> dict[str, Any]:
     return out
 
 
+def _filters(items: list[str] | None) -> dict[str, list[str]]:
+    """Parse ["domain=av,robotics", "hallucination=1"] into {"domain": ["av", "robotics"], ...}."""
+    out: dict[str, list[str]] = {}
+    for item in items or []:
+        key, sep, val = item.partition("=")
+        if not sep:
+            raise SystemExit(f"Expected key=value1,value2, got {item!r}")
+        out[key.strip()] = [v.strip() for v in val.split(",") if v.strip()]
+    return out
+
+
+def _question_ids(values: list[str] | None) -> list[str]:
+    """IDs given inline, or as files of whitespace-separated IDs (any value that is a file)."""
+    ids: list[str] = []
+    for v in values or []:
+        ids += Path(v).read_text().split() if Path(v).is_file() else [v]
+    return ids
+
+
 def build_config(args: argparse.Namespace) -> RunConfig:
+    from .types import GenerationConfig
+
     cfg: dict[str, Any] = {}
     if args.config:
         cfg = yaml.safe_load(Path(args.config).read_text()) or {}
@@ -42,16 +65,18 @@ def build_config(args: argparse.Namespace) -> RunConfig:
 
     # CLI flags override the config file
     overrides = {
-        "model": args.model, "prompt": args.prompt, "run_name": args.run_name,
+        "dataset": args.dataset, "model": args.model, "prompt": args.prompt, "run_name": args.run_name,
         "output_dir": args.output_dir, "concurrency": args.concurrency, "batch_size": args.batch_size,
         "max_retries": args.max_retries, "data_dir": args.data_dir, "categories": args.categories,
-        "difficulties": args.difficulties, "limit": args.limit, "shuffle_seed": args.shuffle_seed,
+        "per_category": args.per_category, "limit": args.limit, "sample_seed": args.sample_seed,
     }
     cfg.update({k: v for k, v in overrides.items() if v is not None})
     if args.retry_errors:
         cfg["retry_errors"] = True
     if args.question_ids:
-        cfg["question_ids"] = [q.strip() for q in Path(args.question_ids).read_text().split() if q.strip()]
+        cfg["question_ids"] = _question_ids(args.question_ids)
+    if args.filter:
+        cfg["filters"] = {**(cfg.get("filters") or {}), **_filters(args.filter)}
     cfg["model_options"] = {**(cfg.get("model_options") or {}), **_kv(args.opt)}
 
     for k in ("max_tokens", "temperature", "top_p", "seed"):
@@ -66,31 +91,52 @@ def build_config(args: argparse.Namespace) -> RunConfig:
 
 def cmd_run(args: argparse.Namespace) -> None:
     cfg = build_config(args)
-    samples = load_samples(
-        Path(cfg.data_dir) if cfg.data_dir else None, cfg.categories, cfg.difficulties,
-        cfg.question_ids, cfg.limit, cfg.shuffle_seed,
-    )
+    dataset = get_dataset(cfg.dataset, cfg.data_dir)
+    samples = dataset.load(cfg.selection())
+    if cfg.question_ids:
+        unknown = set(cfg.question_ids) - {s.question_id for s in samples}
+        if unknown:
+            print(f"WARNING: {len(unknown)} question id(s) not found or filtered out: {sorted(unknown)[:10]}",
+                  file=sys.stderr)
     if not samples:
         raise SystemExit("No questions match the selection")
     model = load_model(cfg.model, **cfg.model_options)
-    summary = Runner(model, cfg).run(samples)
-    run_dir = Path(cfg.output_dir) / cfg.resolved_run_name()
+    summary = Runner(model, dataset, cfg).run(samples)
     print(json.dumps(summary, indent=2))
-    print(f"\nRun directory: {run_dir}")
+    print(f"\nRun directory: {cfg.run_dir()}")
     if summary["n_errors"]:
-        print(f"WARNING: {summary['n_errors']} questions errored; re-run with --retry-errors before submitting.")
-    if len(samples) < 2720:
-        print(f"NOTE: subset of {len(samples)}/2720 questions; the evaluation server scores missing ones as wrong.")
-    print(f"Submit {run_dir / 'submission.json'} at https://huggingface.co/spaces/paulgavrikov/visualoverload-submit")
+        print(f"WARNING: {summary['n_errors']} questions errored; re-run the same command with --retry-errors.")
 
 
 def cmd_prepare(args: argparse.Namespace) -> None:
-    path = prepare(Path(args.data_dir) if args.data_dir else None, force=args.force)
-    print(f"Dataset ready at {path}")
+    print(f"Dataset ready at {get_dataset(args.dataset, args.data_dir).prepare(force=args.force)}")
 
 
 def cmd_finalize(args: argparse.Namespace) -> None:
-    print(json.dumps(finalize(Path(args.run_dir)), indent=2))
+    run_dir = Path(args.run_dir)
+    cfg = load_run_config(run_dir)
+    dataset = get_dataset(cfg.get("dataset", "visualoverload"), cfg.get("data_dir"))
+    print(json.dumps(finalize(run_dir, dataset), indent=2))
+
+
+def cmd_judge(args: argparse.Namespace) -> None:
+    from .judge import Judge, judge_run
+
+    judge = Judge(load_model(args.judge, **_kv(args.opt)), args.judge, max_retries=args.max_retries,
+                  extra=_kv(args.gen_opt))
+    for d in args.run_dirs:
+        stats = judge_run(Path(d), judge, concurrency=args.concurrency, filename=args.save_as)
+        print(f"{d}: {stats}")
+        if stats["judge_errors"]:
+            print(f"  WARNING: {stats['judge_errors']} answers could not be judged; run the same command again.")
+
+
+def cmd_report(args: argparse.Namespace) -> None:
+    from .report import write_report
+
+    print(write_report([Path(d) for d in args.run_dirs], Path(args.out) if args.out else None, args.judgments))
+    if args.out:
+        print(f"Saved {args.out}/report.md and report.json")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -104,39 +150,66 @@ def main(argv: list[str] | None = None) -> None:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
+    datasets = sorted(DATASETS)
 
-    pp = sub.add_parser("prepare", help="download and extract the VisualOverload dataset")
+    pp = sub.add_parser("prepare", help="download and extract a benchmark")
+    pp.add_argument("--dataset", default="visualoverload", choices=datasets)
     pp.add_argument("--data-dir")
     pp.add_argument("--force", action="store_true")
     pp.set_defaults(func=cmd_prepare)
 
-    pr = sub.add_parser("run", help="run a model over the benchmark")
+    pr = sub.add_parser("run", help="run a model over a benchmark")
     pr.add_argument("--config", help="YAML run config (CLI flags override it)")
+    pr.add_argument("--dataset", choices=datasets, help="benchmark (default: visualoverload)")
     pr.add_argument("--model", help=f"<provider>:<model>, providers: {', '.join(available_providers())}")
     pr.add_argument("-o", "--opt", action="append", metavar="KEY=VALUE",
                     help="backend option, e.g. -o image_detail=high -o base_url=http://node:8000/v1")
-    pr.add_argument("--prompt", help="prompt strategy (default: 'default', the paper's prompt)")
+    pr.add_argument("--prompt", help="prompt strategy (default: 'default')")
     pr.add_argument("--max-tokens", type=int)
     pr.add_argument("--temperature", type=float)
     pr.add_argument("--top-p", type=float)
-    pr.add_argument("--seed", type=int)
+    pr.add_argument("--seed", type=int, help="sampling seed passed to the model")
     pr.add_argument("-g", "--gen-opt", action="append", metavar="KEY=VALUE",
-                    help="provider-specific generation option, e.g. -g 'reasoning={effort: low}'")
+                    help="provider-specific generation option, e.g. -g 'reasoning={enabled: false}'")
     pr.add_argument("--run-name")
     pr.add_argument("--output-dir")
     pr.add_argument("--concurrency", type=int, help="parallel requests (API / server backends)")
     pr.add_argument("--batch-size", type=int, help="batch size (in-process local backend)")
     pr.add_argument("--max-retries", type=int)
     pr.add_argument("--retry-errors", action="store_true", help="re-run questions that errored before")
-    pr.add_argument("--data-dir")
-    pr.add_argument("--categories", nargs="+", choices=CATEGORIES)
-    pr.add_argument("--difficulties", nargs="+", choices=DIFFICULTIES)
-    pr.add_argument("--question-ids", help="file with whitespace-separated question ids")
-    pr.add_argument("--limit", type=int)
-    pr.add_argument("--shuffle-seed", type=int, help="shuffle before --limit (for random subsets)")
+    sel = pr.add_argument_group("question selection (combinable; default: all questions)")
+    sel.add_argument("--data-dir")
+    sel.add_argument("--categories", nargs="+", help="task types / categories to keep")
+    sel.add_argument("--question-ids", nargs="+", metavar="ID_OR_FILE",
+                     help="question ids, inline or as files of whitespace-separated ids")
+    sel.add_argument("--filter", action="append", metavar="KEY=V1,V2",
+                     help="keep questions whose metadata matches, e.g. --filter difficulty=hard "
+                          "or --filter domain=av,robotics")
+    sel.add_argument("--per-category", type=int, help="random N questions per category (balanced subset)")
+    sel.add_argument("--limit", type=int)
+    sel.add_argument("--sample-seed", "--shuffle-seed", dest="sample_seed", type=int,
+                     help="seed for --per-category sampling and shuffling before --limit")
     pr.set_defaults(func=cmd_run)
 
-    pf = sub.add_parser("finalize", help="rebuild submission.json and summary.json for a run")
+    pj = sub.add_parser("judge", help="grade a run's answers with an LLM judge")
+    pj.add_argument("run_dirs", nargs="+")
+    pj.add_argument("--judge", default=DEFAULT_JUDGE, help=f"judge model spec (default: {DEFAULT_JUDGE})")
+    pj.add_argument("-o", "--opt", action="append", metavar="KEY=VALUE", help="judge backend option")
+    pj.add_argument("-g", "--gen-opt", action="append", metavar="KEY=VALUE",
+                    help="judge generation option, e.g. -g 'reasoning={enabled: false}'")
+    pj.add_argument("--save-as", default="judgments.jsonl",
+                    help="judgments file inside each run dir (use another name to keep a second judge's grades)")
+    pj.add_argument("--concurrency", type=int, default=8)
+    pj.add_argument("--max-retries", type=int, default=5)
+    pj.set_defaults(func=cmd_judge)
+
+    prp = sub.add_parser("report", help="accuracy tables for one or more judged runs")
+    prp.add_argument("run_dirs", nargs="+")
+    prp.add_argument("--out", help="directory to save report.md and report.json")
+    prp.add_argument("--judgments", default="judgments.jsonl", help="which judgments file to report on")
+    prp.set_defaults(func=cmd_report)
+
+    pf = sub.add_parser("finalize", help="rebuild summary.json and output files for a run")
     pf.add_argument("run_dir")
     pf.set_defaults(func=cmd_finalize)
 

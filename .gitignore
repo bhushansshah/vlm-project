@@ -10,3 +10,4 @@ __pycache__/
 # dataset cache and run outputs
 data/
 runs/
+logs/
