@@ -113,3 +113,112 @@ vlmbench run --config configs/local_qwen25vl_7b.yaml
 ```
 
 Tests: `pytest`.
+
+## MME-RealWorld with Gemma 4 reasoning
+
+`scripts/mme_realworld.py` prepares two deterministic, image-disjoint sets of
+1,000 English questions. It balances the 37 evaluation tasks (domain +
+perception/reasoning + normalized category), pooling monitoring attribute
+subcategories as in the official evaluator. Each set has 27 examples per task
+and one task with 28. Both occurrences of a conflicting duplicate question ID
+are excluded. The full allocation, source hashes, and seed are recorded in
+`data/mme-realworld/sampling_audit.json`.
+
+```bash
+python scripts/mme_realworld.py prepare --seed 42
+python scripts/mme_realworld.py images --batch 1
+# Set OPENROUTER_API_KEY in the git-ignored .env first.
+python scripts/mme_realworld.py run --batch 1
+```
+
+Image preparation uses the authors' pinned `MME-RealWorld-Lmms-eval` release.
+It downloads approximately 31 GB of Parquet shards sequentially, retains only
+the selected images, and deletes each shard after extraction. It verifies the
+question, choices, and answer against the original annotation row. Images are
+sent as supplied by that release, with no client resizing or re-encoding.
+
+The runner uses `google/gemma-4-26b-a4b-it:free`, enables reasoning, and allows
+32,768 total completion tokens (including reasoning). It checks the first real
+sample before launching the rest, with at most 10 in-flight requests. All
+attempts, including retries, share a 3.5-second minimum submission interval.
+Rate-limit responses pause submissions and honor `Retry-After`. Authentication,
+daily-quota, or unsupported-request errors stop the run. It also stops if a
+response provides no evidence that reasoning ran, so that setting can be checked.
+Streaming requests retain compressed raw event traces. They have two-minute
+first-output and output-idle deadlines, plus a 30-minute total deadline, so
+provider keepalives cannot hide a stalled request while active reasoning can
+continue through the full completion-token allowance.
+
+Outputs are saved incrementally under `runs/mme_gemma4_reasoning_batch1/`:
+
+- `config.json`: model, generation settings, source revision, and sample manifest hash.
+- `image_manifest.json`: image dimensions, byte sizes, and SHA-256 hashes.
+- `attempts.jsonl`: durable request starts and outcomes, errors, timing, and usage.
+- `responses.jsonl`: append-only detailed responses, raw provider JSON, returned
+  reasoning, extracted answers, correctness, image metadata, and prompts.
+- `per_example.json` / `.csv`: all 1,000 selected questions and latest results,
+  including pending/error states and accumulated attempt counts.
+- `summary.json`: overall, domain, task, raw category, and perception/reasoning
+  accuracy, completion counts, errors, latency, tokens, and reported costs.
+- `per_domain.csv`, `per_task.csv`, `per_raw_task.csv`, `per_type.csv`: aggregate tables.
+- `official_results.json`: completed results in the official evaluator's format.
+- `status.json`: final completion counts and any stop reason.
+
+Accuracy is reported both over completed responses and over the selected set;
+the latter counts unfinished examples as incorrect and is provisional until all
+1,000 finish. Truncated and unparsed responses are explicitly counted. Answer
+extraction follows the official evaluator, correcting its accidentally joined
+answer-prefix strings and treating empty responses as unparsed. Because the
+official extractor selects the first capital A–E even in prose, supplemental
+`explicit_prediction` / `explicit_correct` fields and
+`explicit_answer_accuracy_completed` metrics also score an explicitly stated
+final answer. The official score remains the primary accuracy; disagreements
+and letter-only formatting violations are counted.
+
+Re-run the same command to resume without repeating completed questions. The
+default retry budget permits 1,250 total request starts across resumes; the
+account's daily free quota can stop the run sooner and leave questions unfinished.
+After quota replenishment, the total budget can be raised with `--max-requests`
+when needed. Credentials are never written to run outputs. Dataset files and
+run outputs are git-ignored.
+
+For the paid endpoint, use:
+
+```bash
+python scripts/mme_realworld.py run --batch 1 \
+  --model google/gemma-4-26b-a4b-it --max-cost-usd 5
+```
+
+Paid runs are stored separately in `runs/mme_gemma4_reasoning_paid_32k_batch1/` and
+pin DekaLLM's BF16 endpoint, with reasoning enabled. At setup, its listed rates
+were $0.06 per million input tokens and $0.33 per million output tokens. Each
+in-flight request reserves its worst-case context/output cost against the cap;
+reported actual costs release the unused reservation. Unknown outcomes after
+a crash retain their reservation when resuming. The paid pilot uses selected
+benchmark questions, and completed pilot examples are retained in the full run.
+Use `--concurrency 20` to resume with more requests in flight while retaining the
+same submission interval and generation settings. The run logs operational
+concurrency changes separately; there is no published guaranteed concurrency
+limit for the pinned provider.
+
+`python scripts/mme_campaign.py` resumes batch 1, retries remaining API errors,
+then starts batch 2 automatically. It uses the same Gemma model with a pool of
+BF16 providers (CoreWeave, io.net, NextBit, and DekaLLM), preserving provider
+history and adding `per_provider.csv` diagnostics. The pool enforces price
+ceilings of $0.10/M input and $0.33/M output tokens. Model, prompts, reasoning,
+image handling, and completion limits are retained across the two batches.
+
+While the current runner is active, edit its `control.json` atomically to change
+`concurrency` (1–64) and `interval_s` (paid minimum 0.5 seconds). These controls
+apply without restarting or cancelling requests; operational changes are logged.
+Batch 2 inherits the latest controls from batch 1. Spending caps and provider
+backoff remain in force. Finished campaigns also write a combined 2,000-example
+report to `runs/mme_gemma4_reasoning_combined_2000/`.
+
+Before evaluating the second set, cache its images with
+`python scripts/mme_realworld.py images --batch 2`, then run
+`python scripts/mme_image_overlap.py`. The latter replaces any byte-identical
+images shared across the sets with deterministic same-task alternatives and
+records the replacements in the sampling audit. Provider responses marked
+`finish_reason: error` are infrastructure failures requiring retries, even if
+their HTTP status was 200. They are excluded from completed-model accuracy.
