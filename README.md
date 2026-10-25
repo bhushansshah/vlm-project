@@ -78,6 +78,12 @@ Each run writes `runs/<run_name>/`:
 - `summary.json`: errors, tokens, latency, plus dataset-specific diagnostics
 - VisualOverload: `submission.json` (upload to the evaluation server); VistaQA: `predictions.json`, and `judgments.jsonl` after `vlmbench judge`
 
+**Cost.** Every saved usage record (answers, agent steps, judgments) has `cached_tokens` and `cost` (USD)
+next to the token counts. A field is `null` when the provider does not report it: OpenRouter reports both;
+the OpenAI, Anthropic and Gemini APIs report cached tokens but no cost; vLLM/Ollama and local models report
+neither. `summary.json` and `vlmbench judge` print the total, and `vlmbench report` adds a Cost table
+(`–` = not reported, never shown as $0). Runs made before this change have no cost saved.
+
 Runs are **resumable**: re-running the same command skips finished questions, so an interrupted or
 preempted job just continues. `--retry-errors` re-runs only the questions that failed.
 
@@ -102,6 +108,49 @@ Locally we use a port of the server's answer extraction (`src/vlmbench/datasets/
 Reference numbers (paper Table 1, total accuracy): o3 69.5, Gemini 2.0 Flash 68.1,
 InternVL3-38B 67.6, Qwen2.5-VL-72B 65.7, Qwen2.5-VL-7B 61.5, random 16.0.
 
+## Tool-augmented agent (pipeline 2)
+
+`--agent tools` wraps any model in a ReAct-style agent: the model thinks, calls a tool by writing
+`<action>{"name": ..., "arguments": {...}}</action>`, sees the result (text + image), and finishes with
+`<answer>...</answer>`. The tools are also declared through the API's native tool-calling field, and
+native calls are converted to the same `<action>` form: some models/providers only call tools natively
+(e.g. Muse Glimmer on DeepInfra), others strip `<tool_call>` text (one Qwen provider), so the agent
+accepts both.
+
+| tool | what it does | backend | needs |
+|---|---|---|---|
+| `zoom` | crop a region and show it enlarged (optional coordinate grid) | PIL | nothing |
+| `grid` | show the image / a region with labeled 0-1000 grid lines | PIL | nothing |
+| `detect` | find, locate and count objects named in words | Grounding DINO tiny | `[tools]`, GPU recommended |
+| `ocr` | read text in the image or a region | EasyOCR | `[tools]` |
+| `depth` | order objects from nearest to farthest | Depth Anything V2 small | `[tools]` |
+
+All tools use boxes `{"left": .., "top": .., "right": .., "bottom": ..}` on a 0-1000 scale of the
+original image. Named fields on purpose: with plain lists, Gemma silently swapped x and y (its own
+`[y1, x1, y2, x2]` convention). Lists are still accepted, read as `[left, top, right, bottom]`.
+
+**GPU on our cluster:** the GPU nodes' driver supports CUDA ≤ 12.4, but the default PyTorch from PyPI is
+built for CUDA 13 and silently falls back to CPU (tools then take ~15 s per call instead of <1 s).
+Install the CUDA 12.4 build: `uv pip install "torch==2.6.*" "torchvision==0.21.*" --index-url
+https://download.pytorch.org/whl/cu124`. Run agent experiments inside a GPU job, e.g.
+`srun -p defq --gres=gpu:1 --cpus-per-task=4 --mem=32G --time=4:00:00 vlmbench run ...`
+(the tool models need about 2 GB of GPU memory; compute nodes can reach OpenRouter).
+
+```bash
+uv pip install -e ".[tools]"     # only for detect / ocr / depth
+# all tools (run on a GPU node: the detector, OCR and depth models run locally)
+vlmbench run --config configs/vistaqa/qwen3.8-27b.yaml --agent tools --per-category 100 --sample-seed 0
+# a subset of tools and options (an ablation)
+vlmbench run --config configs/vistaqa/qwen3.8-27b.yaml --agent tools -a 'tools=[zoom, grid]' -a max_steps=4
+vlmbench judge runs/<agent run>  &&  vlmbench report runs/<baseline run> runs/<agent run>
+```
+
+Agent options (`-a key=value`): `tools` (default: all five), `max_steps` (default 6), `tool_options`
+(e.g. `-a 'tool_options={detect: {box_threshold: 0.35}}'`), `keep_last_images` (drop older tool images to
+save tokens), `step_max_tokens` (default 1024). Each answer's full trajectory (model text, tool calls,
+results) is saved under `trace` in `responses.jsonl`; `summary.json` reports tool usage. An agent run
+uses several model calls per question (about 4-5x the baseline's input tokens with zoom/grid).
+
 ## Code layout
 
 ```
@@ -115,6 +164,8 @@ src/vlmbench/
   cli.py           `vlmbench` command
   datasets/        one module per benchmark behind the Dataset interface (base.py):
                    download, load, prompts, outputs, judge prompt; registry in __init__.py
+  agents/          agents that wrap a model (tool_agent.py: the ReAct tool agent); registry in __init__.py
+  tools/           agent tools behind the Tool interface (base.py); registry in __init__.py
   models/          one backend per provider behind the VLM interface; registry in __init__.py
 configs/           example run configs
 tests/             offline tests (SDK clients stubbed; no network)

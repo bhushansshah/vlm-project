@@ -13,6 +13,7 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ from .datasets import Sample, get_dataset
 from .models import VLM, NonRetryableError
 from .retry import call_with_retries
 from .runner import load_run_config, read_records
-from .types import GenerationConfig, Message
+from .types import Completion, GenerationConfig, Message, usage_totals
 
 log = logging.getLogger(__name__)
 
@@ -66,11 +67,11 @@ class Judge:
         self.max_retries = max_retries
         self.extra = extra or {}  # provider-specific options, e.g. {"reasoning": {"enabled": False}}
 
-    def _ask(self, prompt: str) -> str | None:
+    def _ask(self, prompt: str) -> Completion:
         json_fmt = {"response_format": {"type": "json_object"}} if self.json_mode else {}
         cfg = GenerationConfig(temperature=0.0, max_tokens=512, extra={**self.extra, **json_fmt})
         try:
-            return self.model.generate([Message.user(prompt)], cfg).text
+            return self.model.generate([Message.user(prompt)], cfg)
         except NonRetryableError:
             if not self.json_mode:
                 raise
@@ -78,15 +79,15 @@ class Judge:
             log.info("JSON mode rejected by %s; retrying without it", self.spec)
             self.json_mode = False
             cfg = GenerationConfig(temperature=0.0, max_tokens=512, extra=self.extra)
-            return self.model.generate([Message.user(prompt)], cfg).text
+            return self.model.generate([Message.user(prompt)], cfg)
 
     def grade(self, prompt: str) -> dict[str, Any]:
-        raw, err, _ = call_with_retries(self._ask, prompt, max_retries=self.max_retries)
+        comp, err, _ = call_with_retries(self._ask, prompt, max_retries=self.max_retries)
         if err:
-            return {"correct": None, "reason": "", "judge_raw": None, "error": err}
-        correct, reason = parse_judgment(raw)
-        return {"correct": correct, "reason": reason, "judge_raw": raw,
-                "error": None if correct is not None else reason}
+            return {"correct": None, "reason": "", "judge_raw": None, "error": err, "usage": None}
+        correct, reason = parse_judgment(comp.text)
+        return {"correct": correct, "reason": reason, "judge_raw": comp.text,
+                "error": None if correct is not None else reason, "usage": asdict(comp.usage)}
 
 
 def judge_run(run_dir: Path, judge: Judge, concurrency: int = 8,
@@ -124,8 +125,10 @@ def judge_run(run_dir: Path, judge: Judge, concurrency: int = 8,
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             list(tqdm(pool.map(work, todo), total=len(todo), desc=f"judging {run_dir.name}"))
     final = read_records(path)
+    cost = usage_totals(final[q].get("usage") for q in responses if q in final)["cost_usd"]
     return {
         "answers": len(responses),
         "judged_now": len(todo),
         "judge_errors": sum(1 for q in responses if final.get(q, {}).get("error")),
+        "judge_cost_usd": cost,  # all saved judgments, as reported by the provider; None = not reported
     }

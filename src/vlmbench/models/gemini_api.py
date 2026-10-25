@@ -96,6 +96,7 @@ class GeminiVLM(VLM):
             "temperature": config.temperature,
             "top_p": config.top_p,
             "seed": config.seed,
+            "stop_sequences": config.stop,
         }
         if self.disable_safety:
             cfg["safety_settings"] = [
@@ -125,5 +126,6 @@ class GeminiVLM(VLM):
             input_tokens=getattr(um, "prompt_token_count", None),
             output_tokens=getattr(um, "candidates_token_count", None),
             reasoning_tokens=getattr(um, "thoughts_token_count", None),
+            cached_tokens=getattr(um, "cached_content_token_count", None),
         )
         return Completion(text=resp.text, finish_reason=finish, usage=usage, raw=resp)

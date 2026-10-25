@@ -69,6 +69,7 @@ def build_config(args: argparse.Namespace) -> RunConfig:
         "output_dir": args.output_dir, "concurrency": args.concurrency, "batch_size": args.batch_size,
         "max_retries": args.max_retries, "data_dir": args.data_dir, "categories": args.categories,
         "per_category": args.per_category, "limit": args.limit, "sample_seed": args.sample_seed,
+        "agent": args.agent,
     }
     cfg.update({k: v for k, v in overrides.items() if v is not None})
     if args.retry_errors:
@@ -78,6 +79,7 @@ def build_config(args: argparse.Namespace) -> RunConfig:
     if args.filter:
         cfg["filters"] = {**(cfg.get("filters") or {}), **_filters(args.filter)}
     cfg["model_options"] = {**(cfg.get("model_options") or {}), **_kv(args.opt)}
+    cfg["agent_options"] = {**(cfg.get("agent_options") or {}), **_kv(args.agent_opt)}
 
     for k in ("max_tokens", "temperature", "top_p", "seed"):
         if getattr(args, k) is not None:
@@ -101,6 +103,9 @@ def cmd_run(args: argparse.Namespace) -> None:
     if not samples:
         raise SystemExit("No questions match the selection")
     model = load_model(cfg.model, **cfg.model_options)
+    if cfg.agent:
+        from .agents import build_agent
+        model = build_agent(cfg.agent, model, **cfg.agent_options)
     summary = Runner(model, dataset, cfg).run(samples)
     print(json.dumps(summary, indent=2))
     print(f"\nRun directory: {cfg.run_dir()}")
@@ -134,7 +139,8 @@ def cmd_judge(args: argparse.Namespace) -> None:
 def cmd_report(args: argparse.Namespace) -> None:
     from .report import write_report
 
-    print(write_report([Path(d) for d in args.run_dirs], Path(args.out) if args.out else None, args.judgments))
+    print(write_report([Path(d) for d in args.run_dirs], Path(args.out) if args.out else None, args.judgments,
+                       common=not args.all_answers))
     if args.out:
         print(f"Saved {args.out}/report.md and report.json")
 
@@ -171,6 +177,9 @@ def main(argv: list[str] | None = None) -> None:
     pr.add_argument("--seed", type=int, help="sampling seed passed to the model")
     pr.add_argument("-g", "--gen-opt", action="append", metavar="KEY=VALUE",
                     help="provider-specific generation option, e.g. -g 'reasoning={enabled: false}'")
+    pr.add_argument("--agent", help="wrap the model in an agent: 'tools' (tool-augmented ReAct agent)")
+    pr.add_argument("-a", "--agent-opt", action="append", metavar="KEY=VALUE",
+                    help="agent option, e.g. -a 'tools=[zoom, detect]' -a max_steps=4")
     pr.add_argument("--run-name")
     pr.add_argument("--output-dir")
     pr.add_argument("--concurrency", type=int, help="parallel requests (API / server backends)")
@@ -207,6 +216,9 @@ def main(argv: list[str] | None = None) -> None:
     prp.add_argument("run_dirs", nargs="+")
     prp.add_argument("--out", help="directory to save report.md and report.json")
     prp.add_argument("--judgments", default="judgments.jsonl", help="which judgments file to report on")
+    prp.add_argument("--all-answers", action="store_true",
+                     help="score each run on all its answers, even if the runs answered different questions "
+                          "(default: only the questions every run answered)")
     prp.set_defaults(func=cmd_report)
 
     pf = sub.add_parser("finalize", help="rebuild summary.json and output files for a run")

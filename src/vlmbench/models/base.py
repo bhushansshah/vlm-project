@@ -17,6 +17,8 @@ class VLM(abc.ABC):
     provider: ClassVar[str]
     #: whether concurrent ``generate`` calls from multiple threads are safe & useful
     supports_concurrency: ClassVar[bool] = True
+    #: accepts Message.tool_calls and "tool" turns (native tool-call history); others get text only
+    supports_native_tool_messages: ClassVar[bool] = False
 
     def __init__(self, model: str, **options: Any):
         self.model = model

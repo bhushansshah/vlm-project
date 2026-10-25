@@ -8,7 +8,7 @@ from vlmbench.judge import Judge, judge_run, parse_judgment
 from vlmbench.models import load_model
 from vlmbench.report import build_report
 from vlmbench.runner import RunConfig, Runner, read_records
-from vlmbench.types import Completion
+from vlmbench.types import Completion, Usage
 
 
 def test_balanced_sampling_is_reproducible(vistaqa):
@@ -85,7 +85,7 @@ def test_run_judge_report(tmp_path, vistaqa):
 
     judge = Judge(FakeJudge(), "fake-judge")
     stats = judge_run(cfg.run_dir(), judge)
-    assert stats == {"answers": 12, "judged_now": 12, "judge_errors": 0}
+    assert stats == {"answers": 12, "judged_now": 12, "judge_errors": 0, "judge_cost_usd": None}
     calls = FakeJudge.calls
     assert judge_run(cfg.run_dir(), judge)["judged_now"] == 0 and FakeJudge.calls == calls  # cached
 
@@ -97,6 +97,37 @@ def test_run_judge_report(tmp_path, vistaqa):
     assert set(d["by"]["hallucination"]) == {"0", "1"}
     assert "By task type" in md and "By domain" in md
     assert set(d["by"]["instances"]) == {"none", "one"}
+    # neither backend reports cost: shown as unknown, never as $0
+    assert d["usage"]["answers"]["cost_usd"] is None and "| oracle:x | – | – |" in md
+    assert json.loads((cfg.run_dir() / "summary.json").read_text())["cost"]["usd"] is None
+
+
+class Priced(Oracle):
+    """The oracle, as a provider that reports cost (like OpenRouter)."""
+    def generate(self, messages, config):
+        comp = super().generate(messages, config)
+        return Completion(text=comp.text, usage=Usage(100, 5, cached_tokens=25, cost=0.01))
+
+
+class PricedJudge(FakeJudge):
+    def generate(self, messages, config):
+        return Completion(text=super().generate(messages, config).text, usage=Usage(50, 5, cost=0.002))
+
+
+def test_cost_flows_from_answers_and_judge_to_report(tmp_path, vistaqa):
+    cfg = RunConfig(model="priced:x", dataset="vistaqa", data_dir=str(vistaqa.data_dir),
+                    output_dir=str(tmp_path / "runs"), run_name="priced")
+    summary = Runner(Priced(vistaqa), vistaqa, cfg).run(vistaqa.load())
+    assert summary["cost"] == {"usd": pytest.approx(0.12), "calls_with_cost": 12, "calls": 12}
+    assert summary["tokens"]["cached"] == 300
+
+    stats = judge_run(cfg.run_dir(), Judge(PricedJudge(), "priced-judge"))
+    assert stats["judge_cost_usd"] == pytest.approx(0.024)
+    assert all(j["usage"]["cost"] == 0.002 for j in read_records(cfg.run_dir() / "judgments.jsonl").values())
+
+    md, data = build_report([cfg.run_dir()])
+    assert "| priced:x | $0.12 | $0.02 | 100 | 25% |" in md
+    assert data["priced"]["usage"]["judge"]["cost_usd"] == pytest.approx(0.024)
 
 
 def test_unanswered_questions_count_as_wrong_without_judge_call(tmp_path, vistaqa):
@@ -130,3 +161,18 @@ def test_second_judge_keeps_its_own_file(tmp_path, vistaqa):
     assert {j["judge_model"] for j in a.values()} == {"judge-a"}
     assert {j["judge_model"] for j in b.values()} == {"judge-b"}
     assert build_report([cfg.run_dir()], "judgments_b.jsonl")[1]["two-judges"]["graded"] == 12
+
+
+def test_report_compares_on_common_questions(tmp_path, vistaqa):
+    full = RunConfig(model="oracle:x", dataset="vistaqa", data_dir=str(vistaqa.data_dir),
+                     output_dir=str(tmp_path / "runs"), run_name="full")
+    part = RunConfig(model="oracle:y", dataset="vistaqa", data_dir=str(vistaqa.data_dir),
+                     output_dir=str(tmp_path / "runs"), run_name="part")
+    Runner(Oracle(vistaqa), vistaqa, full).run(vistaqa.load())
+    Runner(Oracle(vistaqa), vistaqa, part).run(vistaqa.load()[:4])
+    for c in (full, part):
+        judge_run(c.run_dir(), Judge(FakeJudge(), "j"))
+    md, data = build_report([full.run_dir(), part.run_dir()])
+    assert data["full"]["graded"] == 4 and data["part"]["graded"] == 4 and "4 questions every run answered" in md
+    _, data = build_report([full.run_dir(), part.run_dir()], common=False)
+    assert data["full"]["graded"] == 12

@@ -25,10 +25,11 @@ from typing import Any, Iterator
 
 from tqdm import tqdm
 
+from .agents import summarize_traces
 from .datasets import Dataset, Sample, Selection
 from .models import VLM
 from .retry import call_with_retries
-from .types import Completion, GenerationConfig, TextPart
+from .types import Completion, GenerationConfig, TextPart, usage_totals
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +41,10 @@ class RunConfig:
     model_options: dict[str, Any] = field(default_factory=dict)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
     prompt: str = "default"
+    agent: str | None = None  # e.g. "tools": wrap the model in a tool-using agent
+    agent_options: dict[str, Any] = field(default_factory=dict)
     run_name: str | None = None
+    tag: str | None = None  # appended to the automatic run name, e.g. "reason-medium" for a settings variant
     output_dir: str = "runs"
     concurrency: int = 8  # parallel requests for API / server backends
     batch_size: int = 1  # batch size for in-process local backends
@@ -59,7 +63,20 @@ class RunConfig:
         if self.run_name:
             return self.run_name
         safe = self.model.replace("/", "_").replace(":", "__")
-        return f"{self.dataset}__{safe}__{self.prompt}"
+        name = f"{self.dataset}__{safe}__{self.prompt}"
+        if self.agent:
+            name += f"__agent-{self.agent}"
+            if self.agent_options.get("tools"):
+                name += "-" + "+".join(self.agent_options["tools"])
+            if self.agent_options.get("instructions"):
+                name += "-" + str(self.agent_options["instructions"])
+            if self.agent_options.get("protocol", "text") != "text":
+                name += "-" + str(self.agent_options["protocol"])
+            if self.agent_options.get("verify"):
+                name += "-verify"
+        if self.tag:
+            name += f"__{self.tag}"
+        return name
 
     def run_dir(self) -> Path:
         return Path(self.output_dir) / self.resolved_run_name()
@@ -74,7 +91,7 @@ class RunConfig:
         return d
 
     # Fields that change what a response *means*; resuming across a change would mix results.
-    IDENTITY_FIELDS = ("dataset", "model", "model_options", "generation", "prompt")
+    IDENTITY_FIELDS = ("dataset", "model", "model_options", "generation", "prompt", "agent", "agent_options")
 
 
 def read_records(path: Path) -> dict[str, dict]:
@@ -109,7 +126,11 @@ class Runner:
         current = {**self.cfg.to_dict(), "backend": self.model.describe()}
         if cfg_path.exists():
             previous = json.loads(cfg_path.read_text())
-            previous.setdefault("dataset", "visualoverload")  # runs made before multi-dataset support
+            # fill in fields added after a run was created, so old runs still resume
+            previous.setdefault("dataset", "visualoverload")
+            previous.setdefault("agent", None)
+            previous.setdefault("agent_options", {})
+            previous["generation"] = {**GenerationConfig().to_dict(), **previous.get("generation", {})}
             changed = [k for k in RunConfig.IDENTITY_FIELDS if previous.get(k) != current.get(k)]
             if changed:
                 raise RuntimeError(
@@ -148,6 +169,7 @@ class Runner:
             "attempts": attempts,
             "error": error,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            **({"trace": comp.trace} if comp is not None and comp.trace is not None else {}),
         }
 
     def _write(self, rec: dict) -> None:
@@ -221,16 +243,21 @@ def finalize(run_dir: Path, dataset: Dataset, samples: list[Sample] | None = Non
     by_id = {s.question_id: s for s in samples}
     records = {k: v for k, v in records.items() if k in by_id}
     dataset.write_outputs(run_dir, by_id, records)
-    summary = {**summarize(records), **dataset.summarize(by_id, records)}
+    summary = {**summarize(records), **summarize_traces(records), **dataset.summarize(by_id, records)}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary
+
+
+def cost_summary(totals: dict[str, Any]) -> dict[str, Any]:
+    """Cost part of a summary from usage_totals(). usd is None when the provider reports no cost.
+    calls = records with usage: one per answer (an agent answer already sums its steps)."""
+    return {"usd": totals["cost_usd"], "calls_with_cost": totals["cost_reported_calls"], "calls": totals["calls"]}
 
 
 def summarize(records: dict[str, dict]) -> dict:
     by_cat: dict[str, Counter] = defaultdict(Counter)
     finish = Counter()
     errors = Counter()
-    tok_in = tok_out = tok_reason = 0
     latencies = []
     for r in records.values():
         by_cat[r["category"]]["n"] += 1
@@ -240,10 +267,7 @@ def summarize(records: dict[str, dict]) -> dict:
             errors[r["error"].split(":")[0]] += 1
         else:
             latencies.append(r["latency_s"])
-        u = r.get("usage") or {}
-        tok_in += u.get("input_tokens") or 0
-        tok_out += u.get("output_tokens") or 0
-        tok_reason += u.get("reasoning_tokens") or 0
+    u = usage_totals(r.get("usage") for r in records.values())
     latencies.sort()
     return {
         "n_questions": len(records),
@@ -251,7 +275,8 @@ def summarize(records: dict[str, dict]) -> dict:
         "error_types": dict(errors),
         "per_category": {k: dict(c) for k, c in sorted(by_cat.items())},
         "finish_reasons": dict(finish),
-        "tokens": {"input": tok_in, "output": tok_out, "reasoning": tok_reason},
+        "tokens": {k: u[k] for k in ("input", "output", "reasoning", "cached")},
+        "cost": cost_summary(u),
         "latency_s": {
             "median": latencies[len(latencies) // 2] if latencies else None,
             "p95": latencies[int(len(latencies) * 0.95)] if latencies else None,

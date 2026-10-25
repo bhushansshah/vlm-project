@@ -23,8 +23,12 @@ local = [
     "transformers>=4.57",
     "accelerate>=1.0",
 ]
+tools = [                            # model-backed agent tools: detect (Grounding DINO), depth (Depth Anything V2), ocr (EasyOCR)
+    "vlmbench[local]",
+    "easyocr>=1.7",
+]
 dev = ["pytest>=8"]
-all = ["vlmbench[api,local,dev]"]
+all = ["vlmbench[api,local,tools,dev]"]
 
 [project.scripts]
 vlmbench = "vlmbench.cli:main"
