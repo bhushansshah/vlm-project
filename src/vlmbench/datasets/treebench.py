@@ -83,6 +83,93 @@ def wilson(k: int, n: int, z: float = 1.96) -> list[float]:
     return [round(100 * (centre - half), 1), round(100 * (centre + half), 1)]
 
 
+def _iou(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _coverage(region, target) -> float:
+    """Share of ``target`` inside ``region``."""
+    ix = max(0.0, min(region[2], target[2]) - max(region[0], target[0]))
+    iy = max(0.0, min(region[3], target[3]) - max(region[1], target[1]))
+    area = (target[2] - target[0]) * (target[3] - target[1])
+    return ix * iy / area if area > 0 else 0.0
+
+
+def _boxes_in(obj: Any) -> list[tuple[float, float, float, float]]:
+    """Every 0-1000 box in a tool call's arguments (box, region, reference, targets, objects...)."""
+    from ..tools.base import ToolError, parse_box
+
+    found = []
+    if isinstance(obj, dict):
+        if all(k in obj for k in ("left", "top", "right", "bottom")):
+            try:
+                found.append(parse_box(obj))
+            except ToolError:
+                pass
+        else:
+            for v in obj.values():
+                found += _boxes_in(v)
+    elif isinstance(obj, list):
+        if len(obj) == 4 and all(isinstance(v, (int, float)) for v in obj):
+            try:
+                found.append(parse_box(obj))
+            except ToolError:
+                pass
+        else:
+            for v in obj:
+                found += _boxes_in(v)
+    return found
+
+
+def evidence_scores(sample: Sample, record: dict, size: tuple[int, int]) -> dict[str, Any] | None:
+    """For an agent answer: TreeBench's box-IoU of the cited evidence (for each target box, the best
+    IoU of any cited box, averaged; 0 when nothing is cited), and whether any tool call looked at
+    a target (a call box covering at least half of it). None for runs without agent traces."""
+    from ..agents.tool_agent import parse_evidence
+    from ..tools.base import ToolError, parse_box
+
+    trace = record.get("trace")
+    if not trace:
+        return None
+    w, h = size
+    gt = [(b[0] * 1000 / w, b[1] * 1000 / h, b[2] * 1000 / w, b[3] * 1000 / h) for b in sample.meta["target_boxes"]]
+    final = [s for s in trace if s.get("final")] or trace[-1:]
+    cited = []
+    for ev in parse_evidence(final[-1].get("model_output") or ""):
+        try:
+            cited.append(parse_box(ev["box"]))
+        except ToolError:
+            continue
+    miou = sum(max((_iou(g, c) for c in cited), default=0.0) for g in gt) / len(gt) if gt else 0.0
+    looked = [b for s in trace if s.get("arguments") for b in _boxes_in(s["arguments"])]
+    inspected = any(_coverage(b, g) >= 0.5 for b in looked for g in gt)
+    return {"cited": len(cited), "miou": miou, "inspected_target": inspected}
+
+
+def evidence_summary(samples: dict[str, Sample], records: dict[str, dict]) -> dict[str, Any] | None:
+    from PIL import Image
+
+    rows = []
+    for q, r in records.items():
+        if r.get("trace"):
+            with Image.open(samples[q].image_path) as im:
+                rows.append(evidence_scores(samples[q], r, im.size))
+    if not rows:
+        return None
+    given = [x for x in rows if x["cited"]]
+    return {
+        "answers": len(rows),
+        "with_evidence": len(given),
+        "mean_iou": round(100 * sum(x["miou"] for x in rows) / len(rows), 1),  # TreeBench's mIoU (0 if none cited)
+        "mean_iou_when_cited": round(100 * sum(x["miou"] for x in given) / len(given), 1) if given else None,
+        "inspected_target_rate": round(100 * sum(x["inspected_target"] for x in rows) / len(rows), 1),
+    }
+
+
 class TreeBench(Dataset):
     name = "treebench"
     categories = CATEGORIES
@@ -168,7 +255,9 @@ class TreeBench(Dataset):
             by_group[samples[q].meta["group"]].append(q)
         letters = Counter(extract_choice_letter(r.get("response"), samples[q].meta["options"]) or "none"
                           for q, r in records.items())
+        evidence = evidence_summary(samples, records)
         return {
+            **({"evidence": evidence} if evidence else {}),
             "accuracy": {
                 "overall": block(list(records)) if records else None,
                 "per_group": {g: block(qs) for g, qs in sorted(by_group.items())},

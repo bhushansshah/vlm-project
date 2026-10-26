@@ -53,7 +53,8 @@ def test_grid_returns_image(ctx):
 
 
 def test_registry():
-    assert set(TOOLS) == {"zoom", "grid", "detect", "ocr", "depth", "count", "mark", "distance"}
+    assert set(TOOLS) == {"zoom", "grid", "detect", "ocr", "depth", "count", "mark", "distance",
+                          "enhance", "order", "orient", "viewpoint", "colour"}
     with pytest.raises(ValueError):
         build_tools(["teleport"])
 

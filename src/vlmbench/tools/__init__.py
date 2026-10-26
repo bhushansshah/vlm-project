@@ -5,13 +5,19 @@ from __future__ import annotations
 from typing import Any
 
 from .base import ModelTool, Tool, ToolContext, ToolError, ToolResult
+from .colour import Colour
 from .count import Count, Mark
 from .depth import Depth, Distance
 from .detect import Detect
+from .enhance import Enhance
 from .image_ops import Grid, Zoom
 from .ocr import OCR
+from .order import Order
+from .pose import Orient
+from .viewpoint import Viewpoint
 
-TOOLS: dict[str, type[Tool]] = {t.name: t for t in (Zoom, Grid, Detect, OCR, Depth, Count, Mark, Distance)}
+TOOLS: dict[str, type[Tool]] = {t.name: t for t in (Zoom, Grid, Detect, OCR, Depth, Count, Mark, Distance,
+                                                    Enhance, Order, Orient, Viewpoint, Colour)}
 DEFAULT_TOOLS = ("zoom", "grid", "detect", "ocr", "depth")
 
 

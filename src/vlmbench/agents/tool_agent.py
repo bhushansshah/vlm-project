@@ -106,9 +106,39 @@ and stop. The result comes back in the next message. You can make up to {max_ste
      If your answer is that something is not in the image, give no evidence.
    - Then <answer></answer>: answer the question directly and follow its instructions. Give one specific answer (one color, one number, one name), not "X or Y" or "X/Y", and do not add details the question did not ask about."""
 
+# tb1 (TreeBench, multiple choice): every object a question names IS in the image (no "not in the
+# image" answers), a short procedure per question type (viewpoint, ordering, depth, small details),
+# and the final answer is one option letter after the cited evidence boxes.
+INSTRUCTIONS["tb1"] = """You are answering a multiple-choice question about an image. You can call tools to inspect the image before you answer.
+
+Coordinates: every box is {{"left": .., "top": .., "right": .., "bottom": ..}} on a 0-1000 scale of the ORIGINAL image. left and right are horizontal positions (0 = left edge, 1000 = right edge); top and bottom are vertical positions (0 = top edge, 1000 = bottom edge). Example: the top-right quarter of the image is {{"left": 500, "top": 0, "right": 1000, "bottom": 500}}. The original image is {width}x{height} pixels.
+
+Tools:
+{tools}
+
+Example calls:
+{examples}
+
+How to work:
+1. Read the question and the options. Before each tool call, write one or two sentences: what you see so far and what the call will check. Then call ONE tool by writing:
+<action>{{"name": "<tool name>", "arguments": {{...}}}}</action>
+and stop. The result comes back in the next message. You can make up to {max_steps} tool calls; skip tools when the answer is already clear.
+2. Everything the question describes is in the image, even when it is small, far away or partly hidden. If you cannot find it, search (grid, zoom, detect) instead of concluding it is missing.
+3. What works for each kind of question:
+   - "From X's perspective / viewpoint, where is Y?": left and right are X's own, not the camera's. A person facing the camera has their left on the image's RIGHT. Find X and Y, get X's facing direction (orient for a person; for a vehicle or animal, look at where its front points), then call viewpoint with both boxes and that facing. Use its answer unless the image clearly shows X faces another way.
+   - "Counting from the left/right, which one" or "the n-th X": call order with the stated direction (limit the region to the part of the scene the question means), then check the labeled image for missed or doubled instances before counting.
+   - Nearer to or farther from the camera: depth. Distance between two objects: distance.
+   - Colour, material or state of a small object: zoom in; if it is still blurry and small, enhance; use colour to settle close colour calls.
+   - Tool results can be wrong. If a result disagrees with what you clearly see, look again before deciding.
+4. Finish with your evidence and ONE answer:
+   - First give tight boxes for the objects your answer is about (at most 3), e.g.
+<evidence>[{{"label": "woman in red", "box": {{"left": 410, "top": 520, "right": 470, "bottom": 600}}}}]</evidence>
+   - Then the letter of the option you choose, and nothing else, inside <answer></answer>, e.g. <answer>B</answer>."""
+
 # Tools each instruction version is written for (used when the run names no tools).
 V4_TOOLS = ("zoom", "grid", "detect", "count", "mark", "ocr", "depth", "distance")
-INSTRUCTION_TOOLS = {"v4": V4_TOOLS}
+TB1_TOOLS = ("zoom", "grid", "enhance", "detect", "order", "depth", "distance", "colour", "orient", "viewpoint")
+INSTRUCTION_TOOLS = {"v4": V4_TOOLS, "tb1": TB1_TOOLS}
 
 # Fragments of a model's own chat/tool-call template that some providers leak into the text
 # (e.g. "_calls> <ate", "essage|>"). Left in, the model sees them in its history and repeats them.
