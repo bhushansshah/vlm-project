@@ -8,6 +8,7 @@ because the server batches the concurrent requests the runner sends.
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -33,6 +34,7 @@ class OpenAICompatVLM(VLM):
     """
 
     provider = "openai-compat"
+    supports_native_tool_messages = True  # assistant tool_calls + "tool" result turns (see Message)
 
     def __init__(
         self,
@@ -77,16 +79,29 @@ class OpenAICompatVLM(VLM):
                 parts.append({"type": "image_url", "image_url": url})
         return parts
 
+    def _message(self, msg: Message) -> dict[str, Any]:
+        if msg.role == "tool":
+            return {"role": "tool", "tool_call_id": msg.tool_call_id, "content": self._content(msg)}
+        out: dict[str, Any] = {"role": msg.role, "content": self._content(msg)}
+        if msg.tool_calls:
+            out["content"] = out["content"] or None
+            out["tool_calls"] = [{"id": c["id"], "type": "function",
+                                  "function": {"name": c["name"], "arguments": json.dumps(c["arguments"])}}
+                                 for c in msg.tool_calls]
+        return out
+
     def generate(self, messages: list[Message], config: GenerationConfig) -> Completion:
         import openai
 
         kwargs: dict[str, Any] = {
             "model": self.model,
-            "messages": [{"role": m.role, "content": self._content(m)} for m in messages],
+            "messages": [self._message(m) for m in messages],
         }
         if config.max_tokens is not None:
             kwargs[self.max_tokens_param] = config.max_tokens
-        for name in ("temperature", "top_p", "seed"):
+        if config.tools:
+            kwargs["tools"] = [{"type": "function", "function": t} for t in config.tools]
+        for name in ("temperature", "top_p", "seed", "stop"):
             if getattr(config, name) is not None:
                 kwargs[name] = getattr(config, name)
         # Unknown keys go in the request body, e.g. OpenRouter's {"provider": {...}} or
@@ -108,9 +123,35 @@ class OpenAICompatVLM(VLM):
         usage = Usage()
         if resp.usage is not None:
             details = getattr(resp.usage, "completion_tokens_details", None)
+            prompt_details = getattr(resp.usage, "prompt_tokens_details", None)
             usage = Usage(
                 input_tokens=resp.usage.prompt_tokens,
                 output_tokens=resp.usage.completion_tokens,
                 reasoning_tokens=getattr(details, "reasoning_tokens", None),
+                cached_tokens=getattr(prompt_details, "cached_tokens", None),
+                cost=_number(getattr(resp.usage, "cost", None)),  # OpenRouter only; other servers send none
             )
-        return Completion(text=choice.message.content, finish_reason=choice.finish_reason, usage=usage, raw=resp)
+        return Completion(text=_with_tool_calls(choice.message), finish_reason=choice.finish_reason, usage=usage,
+                          raw=resp)
+
+
+def _number(x: Any) -> float | None:
+    """A reported cost as a float, or None if missing or not a number."""
+    return float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else None
+
+
+def _with_tool_calls(message) -> str | None:
+    """Message text, with any native tool calls appended as <action> blocks. Some models (or
+    providers) only ever call tools natively, even when asked for a text format."""
+    text = message.content
+    calls = getattr(message, "tool_calls", None) or []
+    if not calls:
+        return text
+    blocks = []
+    for c in calls:
+        try:
+            args = json.loads(c.function.arguments or "{}")
+        except json.JSONDecodeError:
+            args = c.function.arguments  # left as a string: the agent reports it as unreadable
+        blocks.append("<action>" + json.dumps({"name": c.function.name, "arguments": args}) + "</action>")
+    return (text or "") + "".join(blocks)

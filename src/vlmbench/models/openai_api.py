@@ -83,10 +83,12 @@ class OpenAIResponsesVLM(VLM):
         usage = Usage()
         if resp.usage is not None:
             details = getattr(resp.usage, "output_tokens_details", None)
+            in_details = getattr(resp.usage, "input_tokens_details", None)
             usage = Usage(
                 input_tokens=resp.usage.input_tokens,
                 output_tokens=resp.usage.output_tokens,
                 reasoning_tokens=getattr(details, "reasoning_tokens", None),
+                cached_tokens=getattr(in_details, "cached_tokens", None),
             )
         finish = resp.status
         if resp.incomplete_details is not None:

@@ -1,9 +1,9 @@
-# TreeBench base pipeline (P1): Gemma 4 26B-A4B via OpenRouter, thinking ON at low effort
+# TreeBench base pipeline (P1): Qwen3.8-27B via OpenRouter, thinking ON at low effort
 # (matches the Muse Glimmer run, which cannot turn thinking off). Large token budget so
 # thinking isn't truncated. Greedy, pinned to unquantized (bf16) providers.
 dataset: treebench
-model: openrouter:google/gemma-4-26b-a4b-it
-run_name: treebench__openrouter__google_gemma-4-26b-a4b-it__default__think-low
+model: openrouter:qwen/qwen3.8-27b
+tag: think-low
 prompt: default
 generation:
   temperature: 0

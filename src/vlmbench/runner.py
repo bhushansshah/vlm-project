@@ -1,20 +1,19 @@
-"""Run a model over the benchmark: resumable, concurrent (API) or batched (local GPU).
+"""Run a model over a benchmark: resumable, concurrent (API) or batched (local GPU).
 
 Layout of a run directory::
 
     runs/<run_name>/
         config.json       # everything needed to reproduce the run
-        responses.jsonl   # one record per attempt-completed question (append-only, latest wins)
-        submission.json   # [{"question_id", "response"}] for the official evaluation server
-        summary.json      # local diagnostics (errors, parse rates, tokens, latency)
+        responses.jsonl   # one record per answered question (append-only, latest wins)
+        summary.json      # errors, tokens, latency + dataset-specific diagnostics
+        ...               # dataset-specific outputs (e.g. submission.json, predictions.json)
+        judgments.jsonl   # written later by `vlmbench judge` (datasets with public answers)
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import math
-import random
 import threading
 import time
 from collections import Counter, defaultdict
@@ -26,11 +25,11 @@ from typing import Any, Iterator
 
 from tqdm import tqdm
 
-from .data import Sample
-from .extract import Extracted, extract, extract_choice_letter, normalize_response
-from .models import VLM, NonRetryableError
-from .prompts import build_messages
-from .types import Completion, GenerationConfig, TextPart
+from .agents import summarize_traces
+from .datasets import Dataset, Sample, Selection
+from .models import VLM
+from .retry import call_with_retries
+from .types import Completion, GenerationConfig, TextPart, usage_totals
 
 log = logging.getLogger(__name__)
 
@@ -38,30 +37,53 @@ log = logging.getLogger(__name__)
 @dataclass
 class RunConfig:
     model: str  # "<provider>:<model>"
+    dataset: str = "visualoverload"
     model_options: dict[str, Any] = field(default_factory=dict)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
     prompt: str = "default"
+    agent: str | None = None  # e.g. "tools": wrap the model in a tool-using agent
+    agent_options: dict[str, Any] = field(default_factory=dict)
     run_name: str | None = None
+    tag: str | None = None  # appended to the automatic run name, e.g. "reason-medium" for a settings variant
     output_dir: str = "runs"
     concurrency: int = 8  # parallel requests for API / server backends
     batch_size: int = 1  # batch size for in-process local backends
     max_retries: int = 5
     retry_errors: bool = False  # re-run questions whose previous attempt errored
-    # dataset selection
-    dataset: str = "visualoverload"
+    # question selection
     data_dir: str | None = None
     categories: list[str] | None = None
-    difficulties: list[str] | None = None
     question_ids: list[str] | None = None
+    filters: dict[str, list[str]] | None = None
+    per_category: int | None = None
     limit: int | None = None
-    shuffle_seed: int | None = None
+    sample_seed: int | None = None
 
     def resolved_run_name(self) -> str:
         if self.run_name:
             return self.run_name
         safe = self.model.replace("/", "_").replace(":", "__")
-        name = f"{safe}__{self.prompt}"
-        return name if self.dataset == "visualoverload" else f"{self.dataset}__{name}"
+        name = f"{self.dataset}__{safe}__{self.prompt}"
+        if self.agent:
+            name += f"__agent-{self.agent}"
+            if self.agent_options.get("tools"):
+                name += "-" + "+".join(self.agent_options["tools"])
+            if self.agent_options.get("instructions"):
+                name += "-" + str(self.agent_options["instructions"])
+            if self.agent_options.get("protocol", "text") != "text":
+                name += "-" + str(self.agent_options["protocol"])
+            if self.agent_options.get("verify"):
+                name += "-verify"
+        if self.tag:
+            name += f"__{self.tag}"
+        return name
+
+    def run_dir(self) -> Path:
+        return Path(self.output_dir) / self.resolved_run_name()
+
+    def selection(self) -> Selection:
+        return Selection(categories=self.categories, question_ids=self.question_ids, filters=self.filters,
+                         per_category=self.per_category, limit=self.limit, seed=self.sample_seed)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -69,27 +91,11 @@ class RunConfig:
         return d
 
     # Fields that change what a response *means*; resuming across a change would mix results.
-    IDENTITY_FIELDS = ("dataset", "model", "model_options", "generation", "prompt")
-
-
-def _score(s: Sample, text: str | None, finish_reason: str | None = None
-           ) -> tuple[Extracted | None, bool | None]:
-    """Extract the answer; with public labels also score it (errors/unparsed count as wrong).
-    Private-label datasets keep the server-faithful extraction; ones we score ourselves use the
-    stricter letter extraction so explanations are not misread, and a reply cut off by the
-    token limit counts as unanswered (its last line may be an option list, not a choice)."""
-    if text is None:
-        return None, (False if s.answer is not None else None)
-    if s.answer is None:
-        return extract(text, s.question_type, s.options), None
-    if finish_reason == "length":
-        return Extracted("", False), False
-    letter = extract_choice_letter(normalize_response(text), s.options)
-    return Extracted(letter or "", letter is not None), letter == s.answer.strip().upper()
+    IDENTITY_FIELDS = ("dataset", "model", "model_options", "generation", "prompt", "agent", "agent_options")
 
 
 def read_records(path: Path) -> dict[str, dict]:
-    """Latest record per question_id."""
+    """Latest record per question_id from an append-only JSONL file."""
     records: dict[str, dict] = {}
     if path.exists():
         with path.open() as f:
@@ -100,11 +106,16 @@ def read_records(path: Path) -> dict[str, dict]:
     return records
 
 
+def load_run_config(run_dir: Path) -> dict[str, Any]:
+    return json.loads((run_dir / "config.json").read_text())
+
+
 class Runner:
-    def __init__(self, model: VLM, config: RunConfig):
+    def __init__(self, model: VLM, dataset: Dataset, config: RunConfig):
         self.model = model
+        self.dataset = dataset
         self.cfg = config
-        self.run_dir = Path(config.output_dir) / config.resolved_run_name()
+        self.run_dir = config.run_dir()
         self.responses_path = self.run_dir / "responses.jsonl"
         self._lock = threading.Lock()
 
@@ -115,6 +126,11 @@ class Runner:
         current = {**self.cfg.to_dict(), "backend": self.model.describe()}
         if cfg_path.exists():
             previous = json.loads(cfg_path.read_text())
+            # fill in fields added after a run was created, so old runs still resume
+            previous.setdefault("dataset", "visualoverload")
+            previous.setdefault("agent", None)
+            previous.setdefault("agent_options", {})
+            previous["generation"] = {**GenerationConfig().to_dict(), **previous.get("generation", {})}
             changed = [k for k in RunConfig.IDENTITY_FIELDS if previous.get(k) != current.get(k)]
             if changed:
                 raise RuntimeError(
@@ -126,59 +142,34 @@ class Runner:
 
     def _pending(self, samples: list[Sample]) -> list[Sample]:
         done = read_records(self.responses_path)
-        todo = []
-        for s in samples:
-            r = done.get(s.question_id)
-            if r is None or (r.get("error") and self.cfg.retry_errors):
-                todo.append(s)
+        todo = [s for s in samples
+                if s.question_id not in done or (done[s.question_id].get("error") and self.cfg.retry_errors)]
         n_err = sum(1 for s in samples if done.get(s.question_id, {}).get("error"))
         log.info("%d/%d questions done (%d with errors), %d to run",
                  len(samples) - len(todo), len(samples), n_err, len(todo))
         return todo
 
     # ------------------------------------------------------------- execution
-    def _call_with_retries(self, fn, *args) -> tuple[Any, str | None, int]:
-        delay = 2.0
-        for attempt in range(1, self.cfg.max_retries + 2):
-            try:
-                return fn(*args), None, attempt
-            except NonRetryableError as e:
-                return None, f"non_retryable: {e}", attempt
-            except Exception as e:  # noqa: BLE001 - transient network / rate limit / server errors
-                if attempt > self.cfg.max_retries:
-                    return None, f"{type(e).__name__}: {e}", attempt
-                wait = min(delay, 120) * (0.5 + random.random())
-                log.warning("Attempt %d failed (%s: %s); retrying in %.0fs",
-                            attempt, type(e).__name__, str(e)[:200], wait)
-                time.sleep(wait)
-                delay *= 2
-        raise AssertionError("unreachable")
+    def _messages(self, s: Sample):
+        return self.dataset.build_messages(self.cfg.prompt, s)
 
     def _record(self, s: Sample, comp: Completion | None, error: str | None,
                 attempts: int, latency: float) -> dict:
-        prompt = "\n".join(
-            p.text for m in build_messages(self.cfg.prompt, s) for p in m.content if isinstance(p, TextPart)
-        )
+        prompt = "\n".join(p.text for m in self._messages(s) for p in m.content if isinstance(p, TextPart))
         text = comp.text if comp else None
-        ex, correct = _score(s, text, comp.finish_reason if comp else None)
         return {
             "question_id": s.question_id,
-            "image_id": s.image_id,
             "category": s.category,
-            "question_type": s.question_type,
-            "difficulty": s.difficulty,
             "prompt": prompt,
             "response": text,
-            "extracted": ex.value if ex else None,
-            "parsed": ex.parsed if ex else False,
-            "answer": s.answer,
-            "correct": correct,
+            **self.dataset.postprocess(s, text),
             "finish_reason": comp.finish_reason if comp else None,
             "usage": asdict(comp.usage) if comp else None,
             "latency_s": round(latency, 3),
             "attempts": attempts,
             "error": error,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            **({"trace": comp.trace} if comp is not None and comp.trace is not None else {}),
         }
 
     def _write(self, rec: dict) -> None:
@@ -187,8 +178,8 @@ class Runner:
 
     def _run_one(self, s: Sample) -> dict:
         t0 = time.perf_counter()
-        comp, err, attempts = self._call_with_retries(
-            self.model.generate, build_messages(self.cfg.prompt, s), self.cfg.generation
+        comp, err, attempts = call_with_retries(
+            self.model.generate, self._messages(s), self.cfg.generation, max_retries=self.cfg.max_retries
         )
         rec = self._record(s, comp, err, attempts, time.perf_counter() - t0)
         self._write(rec)
@@ -215,9 +206,11 @@ class Runner:
 
     def _run_batched(self, todo: list[Sample], pbar: tqdm) -> None:
         for batch in self._batches(todo):
-            convs = [build_messages(self.cfg.prompt, s) for s in batch]
+            convs = [self._messages(s) for s in batch]
             t0 = time.perf_counter()
-            comps, err, attempts = self._call_with_retries(self.model.generate_batch, convs, self.cfg.generation)
+            comps, err, attempts = call_with_retries(
+                self.model.generate_batch, convs, self.cfg.generation, max_retries=self.cfg.max_retries
+            )
             per_item = (time.perf_counter() - t0) / len(batch)
             if err and len(batch) > 1:  # e.g. OOM on a big batch: fall back to one at a time
                 log.warning("Batch failed (%s); retrying items individually", err)
@@ -238,112 +231,54 @@ class Runner:
                     self._run_concurrent(todo, pbar)
                 else:
                     self._run_batched(todo, pbar)
-        return finalize(self.run_dir, samples)
+        return finalize(self.run_dir, self.dataset, samples)
 
 
 # ------------------------------------------------------------------ outputs
-def finalize(run_dir: Path, samples: list[Sample] | None = None) -> dict:
-    """Write submission.json and summary.json from responses.jsonl."""
+def finalize(run_dir: Path, dataset: Dataset, samples: list[Sample] | None = None) -> dict:
+    """Write summary.json and the dataset's output files from responses.jsonl."""
     records = read_records(run_dir / "responses.jsonl")
-    if samples is not None:
-        by_id = {s.question_id: s for s in samples}
-        records = {k: v for k, v in records.items() if k in by_id}
-        for qid, r in records.items():  # re-score from the saved text, so scoring fixes need no API calls
-            s = by_id[qid]
-            if s.answer is not None:
-                ex, correct = _score(s, r["response"], r.get("finish_reason"))
-                r.update(extracted=ex.value if ex else None, parsed=ex.parsed if ex else False,
-                         answer=s.answer, correct=correct)
-    write_submission(records, run_dir / "submission.json")
-    summary = summarize(records)
+    if samples is None:
+        samples = dataset.load()
+    by_id = {s.question_id: s for s in samples}
+    records = {k: v for k, v in records.items() if k in by_id}
+    dataset.write_outputs(run_dir, by_id, records)
+    summary = {**summarize(records), **summarize_traces(records), **dataset.summarize(by_id, records)}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary
 
 
-def write_submission(records: dict[str, dict], path: Path) -> None:
-    """Responses as returned by the model (like the authors' eval.py), with markdown emphasis
-    stripped; the server applies its own extraction on top."""
-    sub = [{"question_id": qid, "response": normalize_response(r["response"]) or ""}
-           for qid, r in records.items()]
-    path.write_text(json.dumps(sub, ensure_ascii=False))
+def cost_summary(totals: dict[str, Any]) -> dict[str, Any]:
+    """Cost part of a summary from usage_totals(). usd is None when the provider reports no cost.
+    calls = records with usage: one per answer (an agent answer already sums its steps)."""
+    return {"usd": totals["cost_usd"], "calls_with_cost": totals["cost_reported_calls"], "calls": totals["calls"]}
 
 
 def summarize(records: dict[str, dict]) -> dict:
-    n = len(records)
     by_cat: dict[str, Counter] = defaultdict(Counter)
-    letters: dict[str, Counter] = defaultdict(Counter)
     finish = Counter()
     errors = Counter()
-    tok_in = tok_out = tok_reason = 0
     latencies = []
     for r in records.values():
-        c = by_cat[r["category"]]
-        c["n"] += 1
-        c["error"] += bool(r["error"])
-        c["parsed"] += bool(r["parsed"])
+        by_cat[r["category"]]["n"] += 1
+        by_cat[r["category"]]["errors"] += bool(r["error"])
         finish[str(r["finish_reason"])] += 1
         if r["error"]:
             errors[r["error"].split(":")[0]] += 1
-        if r["question_type"] == "choice" and r["parsed"]:
-            letters[r["category"]][r["extracted"]] += 1
-        u = r.get("usage") or {}
-        tok_in += u.get("input_tokens") or 0
-        tok_out += u.get("output_tokens") or 0
-        tok_reason += u.get("reasoning_tokens") or 0
-        if not r["error"]:
+        else:
             latencies.append(r["latency_s"])
+    u = usage_totals(r.get("usage") for r in records.values())
     latencies.sort()
-    summary = {"n_questions": n}
-    scored = [r for r in records.values() if r.get("correct") is not None]
-    if scored:
-        summary["accuracy"] = _accuracy(scored)
-    summary.update({
-        "n_errors": sum(c["error"] for c in by_cat.values()),
+    return {
+        "n_questions": len(records),
+        "n_errors": sum(c["errors"] for c in by_cat.values()),
         "error_types": dict(errors),
-        "parse_rate": round(sum(c["parsed"] for c in by_cat.values()) / n, 4) if n else None,
-        "per_category": {
-            k: {"n": c["n"], "errors": c["error"], "parse_rate": round(c["parsed"] / c["n"], 4)}
-            for k, c in sorted(by_cat.items())
-        },
-        "choice_letter_distribution": {k: dict(sorted(v.items())) for k, v in sorted(letters.items())},
+        "per_category": {k: dict(c) for k, c in sorted(by_cat.items())},
         "finish_reasons": dict(finish),
-        "tokens": {"input": tok_in, "output": tok_out, "reasoning": tok_reason},
+        "tokens": {k: u[k] for k in ("input", "output", "reasoning", "cached")},
+        "cost": cost_summary(u),
         "latency_s": {
             "median": latencies[len(latencies) // 2] if latencies else None,
             "p95": latencies[int(len(latencies) * 0.95)] if latencies else None,
         },
-    })
-    if not scored:
-        summary["note"] = ("Ground truth is private: submit submission.json to "
-                           "https://huggingface.co/spaces/paulgavrikov/visualoverload-submit for accuracy.")
-    return summary
-
-
-def _wilson(k: int, n: int, z: float = 1.96) -> list[float]:
-    """95% Wilson interval for a proportion, in percent."""
-    if n == 0:
-        return [0.0, 0.0]
-    p = k / n
-    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
-    return [round(100 * (centre - half), 1), round(100 * (centre + half), 1)]
-
-
-def _accuracy(scored: list[dict]) -> dict:
-    """Accuracy overall, per category and per category group ("Perception/OCR" -> "Perception").
-    Errored or unparseable answers count as wrong."""
-    def block(rs: list[dict]) -> dict:
-        k = sum(r["correct"] for r in rs)
-        return {"n": len(rs), "correct": k, "acc": round(100 * k / len(rs), 2), "ci95": _wilson(k, len(rs))}
-
-    by_cat: dict[str, list[dict]] = defaultdict(list)
-    by_group: dict[str, list[dict]] = defaultdict(list)
-    for r in scored:
-        by_cat[r["category"]].append(r)
-        if "/" in r["category"]:
-            by_group[r["category"].split("/")[0]].append(r)
-    out = {"overall": block(scored)}
-    if by_group:
-        out["per_group"] = {g: block(rs) for g, rs in sorted(by_group.items())}
-    out["per_category"] = {c: block(rs) for c, rs in sorted(by_cat.items())}
-    return out
+    }

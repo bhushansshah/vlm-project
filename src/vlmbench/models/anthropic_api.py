@@ -79,6 +79,8 @@ class AnthropicVLM(VLM):
         }
         if system:
             kwargs["system"] = system
+        if config.stop:
+            kwargs["stop_sequences"] = config.stop
         # Current Claude models do not take sampling parameters; older ones still do, so
         # forward them untyped only when explicitly requested.
         sampling = {k: v for k, v in (("temperature", config.temperature), ("top_p", config.top_p)) if v is not None}
@@ -93,5 +95,10 @@ class AnthropicVLM(VLM):
             raise NonRetryableError(str(e)) from e
 
         text = "".join(b.text for b in resp.content if b.type == "text")
-        usage = Usage(input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens)
+        u = resp.usage
+        cache_read = getattr(u, "cache_read_input_tokens", None) or 0
+        cache_write = getattr(u, "cache_creation_input_tokens", None) or 0
+        # Anthropic's input_tokens leaves out cached tokens; count them so input_tokens means all prompt tokens
+        usage = Usage(input_tokens=u.input_tokens + cache_read + cache_write, output_tokens=u.output_tokens,
+                      cached_tokens=cache_read)
         return Completion(text=text, finish_reason=resp.stop_reason, usage=usage, raw=resp)

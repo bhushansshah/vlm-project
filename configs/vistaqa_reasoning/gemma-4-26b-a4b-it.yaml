@@ -1,0 +1,15 @@
+# VistaQA with reasoning on (medium effort). Same for all three models and for baseline and agent runs.
+# Differs from configs/vistaqa/: reasoning medium (was off; Muse: low), max_tokens 10000 (was 512; Muse 4096),
+# top_p set to 1.0 explicitly (was the provider default). Runs are tagged "reason-medium" so they get
+# their own folders next to the earlier runs.
+dataset: vistaqa
+model: openrouter:google/gemma-4-26b-a4b-it
+prompt: default
+tag: reason-medium
+generation:
+  temperature: 0
+  top_p: 1.0
+  max_tokens: 10000
+  extra:
+    reasoning: {effort: medium}
+concurrency: 8

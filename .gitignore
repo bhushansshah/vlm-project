@@ -7,9 +7,10 @@ __pycache__/
 # secrets
 .env
 
-# dataset cache and run outputs
+# dataset cache, run outputs and logs
 data/
 runs/
+logs/
 # (the next two also cover data/runs symlinked to scratch storage)
 /data
 /runs

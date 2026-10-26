@@ -1,0 +1,152 @@
+n,model,question_id,task,trick,question,reference_answer,model_answer,my_label,judge_qwen72b,judge_haiku,note
+1,gemma,244,attribute,0,what is the color of the vehicle positioned in front of the building and behind the parked motorcycle from the camera’s perspective?,white.,The vehicle positioned in front of the building and behind the parked motorcycle is black.,0,0,0,
+2,gemma,655,identification,1,what objects on the counter can be used by the robot for scrubbing the dishes?,there is no such object.,The image does not show any objects that can be used for scrubbing dishes.,1,1,1,
+3,gemma,1030,identification,0,what type of safety equipment is worn by the worker sitting near the barriers?,a helmet.,The worker sitting near the barriers is wearing a yellow hard hat.,1,1,1,
+4,gemma,1049,ocr,1,what is the plate number of the van?,the plate number of the van is not visible in this image.,The plate number of the van is not visible in the image.,1,1,1,
+5,gemma,211,counting,0,how many red stars are there in the image?,there are two red stars in the image.,There are 2 red stars in the image.,1,1,1,
+6,gemma,458,identification,0,what type of public transportation people can use?,bus.,"Based on the image, it is not possible to determine what type of public transportation people can use.",0,1,0,
+7,gemma,1140,identification,0,what kind of roadside warning signs are visible on the right?,a T-intersection warning sign with a “SLOW” sign beneath it.,"A ""SLOW"" warning sign is visible on the right.",0,0,0,incomplete: misses the T-intersection sign
+8,gemma,862,identification,0,what kind of lightweight decoration is arranged in an arch beside the red car?,balloons.,The image does not show any lightweight decoration arranged in an arch beside the red car.,0,0,0,
+9,gemma,1122,comparison,0,"between the two boys standing in front of the computers, which one is taller?",the boy on the left wearing a grey shirt.,The boy in the grey shirt is taller than the boy in the colorful shirt.,1,1,1,
+10,gemma,1006,ocr,0,which curve in the image is labelled incorrectly?,the blue and red curves are labelled incorrectly.,"The curve labeled $y = \sqrt{x+1}$ is incorrect, as it actually represents the function $y = \ln(x+2)$.",0,0,0,
+11,gemma,904,attribute,0,which pip count appears most frequently among all dice?,it is 4.,The pip count that appears most frequently among all dice is 1.,0,0,0,
+12,gemma,492,ocr,0,what is the blue structure that has a smooth surface without small particles attached called in this diagram?,smooth ER.,The blue structure with a smooth surface is called the vacuole.,0,0,0,
+13,gemma,6,attribute,1,"on the white yacht in the background, what color is the helicopter currently parked on the rear helipad?",there is no helicopter in this image.,The image does not show a helicopter on the yacht.,1,1,0,
+14,gemma,166,ocr,0,what is the brand of the bag in the left display?,Giorgio Armani.,The brand of the bag in the left display is not identifiable from the image.,0,1,0,
+15,gemma,227,identification,0,"what specific component of the vehicle is being utilized to maintain its upright, stationary position on the uneven terrain?",the kickstand.,The vehicle is being held upright by its kickstand.,1,1,1,
+16,gemma,589,spatial,0,"which direction is the seated person wearing pink looking, her left or her right?",she is looking at her left.,The seated person wearing pink is looking towards her right.,0,0,0,
+17,gemma,201,comparison,0,"if the robot selects a toy for a child who likes animals, which object should it pick from the camera's perpective, the rightmost or the leftmost toy?",the rightmost toy.,The image does not contain enough information to identify which toy is an animal.,0,0,0,
+18,gemma,921,identification,1,what is the label for the white wood-boring larva shown tunneling through the heartwood near position 'a'?,there is no white larva depicted tunneling through the heartwood in this illustration.,The white wood-boring larva is not shown in the image.,1,1,1,
+19,gemma,24,spatial,0,"which object is positioned directly above the center of the main bridge arch, sitting at the very peak of the pediment?",a small sculpted head.,"The object positioned at the very peak of the pediment is a small architectural structure or pediment feature, but no specific distinct object is sitting at the very peak.",0,0,0,
+20,gemma,1005,identification,0,which object in the scene can be used by the robot to input a password to unlock the computer?,keyboard.,The keyboard on the desk can be used to input a password.,1,1,1,
+21,gemma,644,ocr,0,what is the common name for the material found in the reddish-orange layer?,the common name for the material found in the reddish-orange layer is subsoil.,The common name for the material found in the reddish-orange layer is subsoil.,1,1,1,
+22,gemma,431,identification,1,what is the color of the skirt of the driver riding the electric scooter?,no one is riding the scotter.,The information required to answer the question is not in the image.,1,1,0,trick; 'not in image' accepted by rule 6
+23,gemma,814,attribute,0,what is the color of the organelle identified by the letter l in the cell diagram?,the color of the organelle identified by the letter l is purple.,"The organelle identified by the letter L is not a single organelle but a group of structures, and its color is not specified.",0,0,0,
+24,gemma,516,spatial,0,what object is directly behind the rearmost rectangular prism?,it is a sphere.,The object directly behind the rearmost rectangular prism is a purple pyramid.,0,0,0,
+25,gemma,713,ocr,0,what are the scientific names of the insects labeled as caddisfly?,hydrobiosis and conoesucidae.,The scientific names of the insects labeled as caddisfly are *Hydrobiosis* and *Conoesucidae*.,1,1,1,
+26,gemma,731,ocr,0,what is the title of the green book on the third shelf from the top?,the title of the book is Trees & Shrubs.,"The title of the green book on the third shelf from the top is ""Trees & Shrubs.""",1,1,1,
+27,gemma,771,comparison,0,"among the suitcases of the people standing in the line, which one is the largest? ",the large light-colored suitcase held by the third person from the right.,The largest suitcase among the people in line is the light blue one on the far left.,0,0,0,
+28,gemma,1052,ocr,0,on which road number is Holmfirth located according to the text?,A6024.,Holmfirth is located on the A6024 Woodhead Road.,1,1,1,
+29,gemma,157,identification,1,what is the name of the hair-like appendage shown extending from the cell wall? ,there is no hair-like appendage depicted in this plant cell diagram.,The information requested is not in the image.,1,1,0,
+30,gemma,698,identification,0,what additional traffic-calming marking is painted across the road just before the zebra crossing?,yellow speed hump marking.,There are no additional traffic-calming markings painted across the road just before the zebra crossing.,0,0,0,
+31,gemma,184,comparison,1,"between the red bus and the construction truck, which vehicle is closer to the individual to the right of the motorcycle?","there is no red bus visible in the image, so this comparison cannot be made.",The question cannot be answered from the image because there is no red bus visible.,1,1,1,
+32,gemma,1142,identification,0,what religious symbol is positioned centrally at the far end of the aisle toward which the benches are oriented?,a crucifix.,A crucifix is positioned centrally at the far end of the aisle.,1,1,1,
+33,gemma,1102,identification,0,what is the name of the organ labeled 'd'?,small intestine.,The organ labeled 'D' is the large intestine.,0,0,0,
+34,qwen,599,comparison,0,"between leaf 'e' and leaf 'a', which leaf has its widest part located in the upper half?",leaf 'e' has its widest part located in the upper half.,Leaf E has its widest part located in the upper half.,1,1,1,
+35,qwen,590,counting,1,how many purple circles are there in the image?,there is no circle in the image.,There are no purple circles in the image.,1,1,0,
+36,qwen,937,ocr,0,what is the address of the parking lot in the front?,it's 8 Ayer Rajah Crescent.,The address of the parking lot is 8 Ayer Rajah Crescent.,1,1,1,
+37,qwen,289,counting,0,how many cushions are there on the sofa?,there are 13 cushions on the sofa.,There are 10 cushions on the sofa.,0,0,0,
+38,qwen,633,comparison,0,which set of triangles are all similar to each other?,triangle B and E are similar.,"Based on visual inspection of the grid, triangles **A, B, and E** appear to be similar to each other (they are all scalene triangles with the same shape but different orientations and sizes). Triangles C and D are also scalene but have different proportions.
+
+Therefore, the set of triangles that are all similar to each other is **A, B, and E**.",0,0,0,
+39,qwen,51,attribute,0,what is the specific point of attachment for the stem on the leaf identified by label e?,it is attached to the middle of the leaf blade's underside rather than at the base of the margin.,"Based on the image, the specific point of attachment for the stem on the leaf identified by label E is the center of the leaf blade (peltate attachment).",1,1,0,
+40,qwen,756,counting,0,how many cylinders are on the table?,1.,2,0,0,0,
+41,qwen,745,spatial,1,"if the robot tries to touch the first object to the right of a laptop on the table, what is it?",there is no laptop on the table.,"It is not possible to answer this question from the image, as there is no laptop visible on the table.",1,1,1,
+42,qwen,945,attribute,0,what pattern is on the skirt worn by the individual carrying a camera?,the skirt has a striped pattern.,The skirt worn by the individual carrying a camera has a striped pattern.,1,1,1,
+43,qwen,865,spatial,1,which object is directly behind the orange cube and to the left of the tall blue prism?,none of the object.,I cannot answer this question because the image does not contain enough information to determine the spatial relationships between the objects as described.,1,1,0,trick; 'cannot determine' accepted by rule 6
+44,qwen,186,counting,0,how many of those birds have tail feathers that are depicted with a clear striped or banded pattern?,there are 16 birds that have tail feathers depicted with a clear striped or banded pattern.,"Based on the visual evidence in the image, there are **10** birds depicted with tail feathers showing a clear striped or banded pattern.
+
+These are:
+*   **K** (top left, under BA)
+*   **U** (middle column, under Z)
+*   **T** (middle column, under U)
+*   **F** (middle column, under T)
+*   **H** (middle column, under L)
+*   **M** (middle column, under H)
+*   **B** (middle column, under M)
+*   **G** (right column, under X)
+*   **V** (right column, under G)
+*   **BB** (right column, under V)
+*   **R** (bottom left, under P) - *Correction: Looking closely at R, the tail has bands. Let's re-evaluate.*
+
+Let's look closer at each one:
+1.  **K**: Yes, distinct bands.
+2.  **Y**: No, solid dark.
+3.  **A**: No, solid dark.
+4.  **C**: No, solid dark.
+5.  **BD**: Yes, distinct bands.
+6.  **R**: Yes, distinct bands.
+7.  **Z/U**: Yes, distinct bands.
+8.  **T**: Yes, distinct bands.
+9.  **F**: Yes, distinct bands.
+10. **L/H**: Yes, distinct bands.
+11. **M**: Yes, distinct bands.
+12. **B**: Yes, distinct bands.
+13. **S**: No, looks solid or very faint.
+14. **E**: No, looks solid.
+15. **X/G**: Yes, distinct bands.
+16. **V**: Yes, distinct bands.
+17. **BB**: Yes, distinct bands.
+18. **Q/D**: No, solid dark.
+
+So the list is: **K, BD, R, U, T, F, H, M, B, G, V, BB**. That is 12 birds.
+
+Let's re-examine **S** and **E**.
+*   **S**: The tail looks like it might have a slight band, but it's very small. It looks mostly solid.
+*   **E",0,0,0,
+45,qwen,817,identification,0,which piece of hardware on the aircraft is responsible for housing the high-resolution lenses required to perform OCR tasks on vehicle license plates from a significant altitude?,the camera gimbal mounted on the side.,"Based on the image, the white, pod-like sensor mounted on a boom under the helicopter's fuselage is the hardware responsible for housing the high-resolution lenses for OCR tasks.",,1,0,unsure: sensor pod under fuselage vs camera gimbal on the side
+46,qwen,1136,comparison,0,"between the two silver bowls, which one is positioned closer to the robotic arm's base?",the left silver bowl containing brown contents is positioned closer to the robotic arm's base.,The silver bowl on the right is positioned closer to the robotic arm's base.,0,0,0,
+47,qwen,1021,attribute,0,"regarding the texture of layer 'd', does it contain many large rocky fragments or does it appear uniformly fine-grained without large rocks?",the texture of layer 'd' appears uniformly fine-grained without large rocks.,"Based on the image, layer 'd' appears uniformly fine-grained without large rocks.",1,1,1,
+48,qwen,239,comparison,0,"between the pavilion roof at the terminus of the pontoon bridge and the dense vegetation on the left horizon, which one is positioned closer to the camera?",the pavilion roof at the terminus of the pontoon bridge.,The pavilion roof at the terminus of the pontoon bridge is positioned closer to the camera than the dense vegetation on the left horizon.,1,1,1,
+49,qwen,872,attribute,1,what color is the shape that is directly to the right of the blue star and overlaps with other shape and has more than six sides?,none of the shape satisfies these conditions.,"Based on the image, the shape directly to the right of the blue star that overlaps with another shape and has more than six sides is a purple octagon (which has 8 sides).
+
+Therefore, the color is **purple**.",0,0,0,
+50,qwen,1038,ocr,0,what is the name of the resource shown at the bottom center of the diagram?,water and air.,"Based on the diagram, the resource shown at the bottom center is **Water and air**.",1,1,1,
+51,qwen,1006,ocr,0,which curve in the image is labelled incorrectly?,the blue and red curves are labelled incorrectly.,"Based on the mathematical properties of the functions shown:
+
+*   **$y = x + 1$ (Green line):** At $x=0$, $y=1$. At $x=1$, $y=2$. This matches the green line perfectly.
+*   **$y = \sqrt{x + 1}$ (Red line):** At $x=0$, $y=\sqrt{1}=1$. At $x=3$, $y=\sqrt{4}=2$. This matches the red curve perfectly.
+*   **$y = \ln(x + 2)$ (Blue line):** At $x=0$, $y=\ln(2) \approx 0.69$. At $x=1$, $y=\ln(3) \approx 1.1$. At $x=2$, $y=\ln(4) \approx 1.38$. Looking at the blue curve, at $x=0$, it starts at $y=0$. The function that starts at $(0,0)$ and passes through $(3, \approx 1.4)$ is actually **$y = \ln(x+1)$**. Let's check: $\ln(0+1)=0$, $\ln(1+1)=\ln(2)\approx 0.69$, $\ln(2+1)=\ln(3)\approx 1.1$, $\ln(3+1)=\ln(4)\approx 1.38$. The blue curve passes through $(0,0)$, $(1, \approx 0.7)$, $(2, \approx 1.1)$, $(3, \approx 1.4)$. This corresponds to $y = \ln(x+1)$.
+
+Therefore, the blue curve is labelled as $y = \ln(x + 2)$, but it is actually the graph of $y = \ln(x + 1)$.
+
+The blue curve is labelled incorrectly.",0,0,0,
+52,qwen,816,ocr,0,what is the plate number of the big black truck?,it is YN9716U.,YM 9716 U,0,1,0,OCR: one wrong character (YM vs YN)
+53,qwen,1075,counting,1,how many yellow No Parking signs are mounted to the wall directly in front of the silver sedan?,there are no signs in front of the silver sedan.,"Based on the image, there are no yellow ""No Parking"" signs mounted to the wall in front of the silver sedan.",1,1,1,
+54,qwen,530,attribute,0,what is the color of the container in the scene suitable for holding a beverage that the robot could grasp?,yellow.,The container suitable for holding a beverage that the robot could grasp is white.,0,0,0,
+55,qwen,861,spatial,0,"if the robot reaches into the cup, which object would it grasp?",the marker.,I cannot determine which object the robot would grasp from the image.,0,0,0,
+56,qwen,1156,identification,0,which repeated round objects are aligned along both sides of the roadway near the sidewalks to separate pedestrian space from the street?,they are spherical bollards.,spherical bollards,1,1,1,
+57,qwen,982,spatial,0,"if the robot is preparing to cook, which object in the scene is farthest left from it and should be removed?",the packet.,"Based on the image, the object farthest to the left that might need to be removed is the white chair or stool.",0,0,0,
+58,qwen,1051,identification,0,what is the name of the nuts labeled 'j'?,pine nuts.,The nuts labeled 'J' are pine nuts.,1,1,1,
+59,qwen,1061,attribute,0,what is the shape of the pieces on the necklace worn by the woman in blue standing behind the seated woman with the patterned top?,rounded.,"The necklace worn by the woman in blue standing behind the seated woman with the patterned top consists of round, bead-like pieces.",1,1,1,
+60,qwen,52,identification,0,what is the name of this chemical structure?,hydrogen peroxide., hydrogen peroxide,1,1,1,
+61,qwen,460,identification,0,what is the name for the structure labeled 'f'?,pituitary gland.,pituitary gland,1,1,1,
+62,qwen,265,attribute,0,what color are the trousers worn by the individual standing directly to the right of the person with the red scarf?,he is wearing black pants.,"Based on the image, the individual standing directly to the right of the person with the red scarf is wearing dark, likely black, trousers.",1,1,1,
+63,qwen,101,identification,0,what line of temporary objects separates the roadway from the work zone on the right side of the road ahead?,construction barriers.,A line of orange and white plastic water-filled barriers separates the roadway from the work zone on the right side of the road ahead.,1,1,1,
+64,qwen,1072,spatial,1,what is the animal positioned between the white rabbit and the brown bear?,there is no animal positioned between the white rabbit and the brown bear in the image.,"None, as the white rabbit and brown bear are directly adjacent in the food chain.",1,0,0,
+65,qwen,211,counting,0,how many red stars are there in the image?,there are two red stars in the image.,2,1,1,1,
+66,qwen,880,attribute,0,what material are the large display tables in the store made of?,wood.,The large display tables in the store are made of light-colored wood.,1,1,1,
+67,muse,963,identification,0,is the ego vehicle’s direction of travel currently permitted by the traffic signals?,"no, the traffic lights are red.","The ego vehicle is not visible in the image, so its direction of travel and signal permission cannot be determined.",0,0,0,
+68,muse,292,ocr,0,"in this food chain, starting from the 'grass', what is the third organism in the sequence?",shrew.,"Starting from grass, the third organism in the sequence is the shrew.",1,1,1,
+69,muse,988,identification,0,which curve increases rapidly at first and then gradually levels off as it moves to the right?,the green curve.,The green curve increases rapidly at first and then gradually levels off as it moves to the right.,1,1,1,
+70,muse,469,ocr,0,"what license plate is visible on the silver van in the right lane, and what other numeric marking appears on its rear?","the license plate appears to read GBG 9998 B, and there is also a circular “70” marking on the rear.",The silver van’s rear license plate reads GBG 9998 B and a circular “70” marking is also visible on its rear door.,1,1,1,
+71,muse,250,attribute,0,what is the color of the object near the sink that the robot would use for cleaning?,blue.,The cleaning cloth near the sink is blue.,1,1,1,
+72,muse,936,comparison,1,is the magma chamber beneath label 'a' or the one beneath label 'b' shown to have a larger total volume in this illustration?,there is no magma chamber beneath label 'a'.,"The large magma reservoir shown at the bottom of the cross-section, near the “A” label, is depicted with a much greater volume than the shallow intrusion marked B.",0,0,0,
+73,muse,962,counting,0,how many rectangles and squares are there in the image?,there are seven rectangles and squares in the image.,There are six clearly identifiable square/rectangular shapes in the image — four squares and two rectangles.,0,0,0,
+74,muse,1118,identification,1,what is the person waving at the first train holding in their left hand?,there is no such person.,The image does not clearly show a person waving at the first train or what they might be holding in their left hand.,1,1,0,trick; 'not clearly shown' accepted by rule 6
+75,muse,515,comparison,0,which one is farther away from the camera the people sitting under the flowered trees or the building to the right?,the building to the right.,The building to the right is farther away from the camera than the people sitting under the flowered trees.,1,1,1,
+76,muse,1147,counting,1,how many stars are at the right of blue l shapes in the image?,none of the l shapes are blue.,"There are no blue L-shaped objects in the image, so there are no stars to the right of a blue L shape.",1,1,1,
+77,muse,824,ocr,1,what company name is written on the side of the excavator?,the company name cannot be determined clearly from this image.,The company name on the side of the excavator is not legible in the image.,1,1,1,
+78,muse,631,attribute,0,what is the primary color of the trigger mechanism on the spray bottle near the robotic arm?,the trigger mechanism on the spray bottle is red.,The trigger mechanism on the spray bottle near the robotic arm cannot be discerned from the image.,0,0,0,
+79,muse,1123,attribute,0,what colors do the parallelograms have in the image?,"the parallelograms are red, green, blue and purple.","The parallelograms in the image are red, blue and green.",0,0,0,incomplete: misses purple
+80,muse,1028,comparison,0,"which building is taller, the leftmost building with the curved roof or the building with the angular lighting?",the building with the angular lighting is taller.,The building with the angular lighting is taller than the leftmost building with the curved roof.,1,1,1,
+81,muse,981,attribute,0,what color and shape is the container that is farthest from the robotic arm and is not obstructed?,the container that is farthest from the robotic arm and is not obstructed is a purple circular tray.,The question cannot be answered from the image because no robotic arm is visible.,0,0,0,
+82,muse,887,attribute,0,"what color is the shirt of the individual positioned between the large white tent and the white vehicle, whose head is partially obscured by the tent's canopy?",blue.,The individual’s shirt is blue.,1,1,1,
+83,muse,415,comparison,0,comparing the curvature of the skin on the bottom of foot 'b' and foot 'c'; which of these two feet would have a larger surface area making contact with the floor?,foot 'c'.,Foot B would have a larger surface area in contact with the floor than foot C.,0,0,0,
+84,muse,603,attribute,0,what is the color of the zone of accumulation of salts labeled b in the diagram on the right?,the zone of accumulation of salts is yellow.,The B horizon shown on the right is a light yellow/tan colored layer.,1,1,1,yellow/tan vs yellow: accepted
+85,muse,551,spatial,0,is the waxing gibbous phase to the left or right of the waxing crescent?,the waxing gibbous phase is to the left of the waxing crescent.,"The waxing gibbous phase and its position relative to the waxing crescent are not labeled or shown in the image, so the question cannot be answered from the image.",0,1,0,
+86,muse,19,identification,1,what type of vehicle is parking in front of the red and white building?,there is no red and white building.,The question cannot be answered from the image; there is no red and white building with a parked vehicle visible.,1,1,1,
+87,muse,68,ocr,0,what is the license plate number of the van in the left lane which is positioned closer to the camera?,it's GV9651M.,The van in the left lane closest to the camera has license plate GV 9651M.,1,1,1,
+88,muse,307,counting,0,how many vegetarian perfumes are there on the third shelf from the right and forth from the top?,there are 2 vegetarian perfumes.,The exact number of vegetarian perfumes on that specific shelf cannot be determined with certainty from the image.,0,0,0,
+89,muse,939,spatial,0,in which horizontal direction do the light rays travel as they move from the sun toward the earth?,the light rays travel horizontally from the left to the right.,"The light rays travel horizontally to the right, from the Sun toward the Earth.",1,1,1,
+90,muse,1071,identification,0,which object on the table must the robotic arm identify and treat as sensitive electronic equipment?,the black circular conference speakerphone on the table must the robotic arm identify and treat as sensitive electronic equipment.,The question cannot be answered from the image.,0,0,0,
+91,muse,1003,attribute,1,"from the camera's perspective, what color is the pot to the right of the transparent box?",there is no pot to the right of the transparent box visible.,The pot to the right of a transparent box cannot be identified from the image.,1,1,1,trick; rule 6
+92,muse,738,ocr,0,what is written on the road sign that is mounted lower relative to the ground?,it's written GIVE WAY.,The road sign mounted lower relative to the ground reads “GIVE WAY”.,1,1,1,
+93,muse,410,spatial,0,is the black car ahead traveling in the same direction as the ego vehicle?,"yes, it is traveling in the same direction.",The direction the black car is traveling cannot be determined from the image.,0,0,0,
+94,muse,533,spatial,0,"from the motorcyclist’s perspective, where is the pedestrian positioned?",the pedestrian is positioned ahead left.,The pedestrian is ahead of and to the right of the motorcyclist on the curb island.,0,0,0,
+95,muse,995,spatial,0,"from the camera's perspective, in which direction is the banknote located relative to the robotic arm's gripper?",the banknote is located in the bottom-right direction relative to the robotic arm's gripper.,"The banknote is not visible in the image, so its location relative to the robotic arm’s gripper cannot be determined.",0,0,0,
+96,muse,956,comparison,0,"comparing the first three bowls on the left in the top row to the first three bowls on the left in the bottom row, which set has a less consistent geometric shape?",the first three bowls on the left in the bottom row.,The first three bowls on the left in the bottom row have a less consistent geometric shape.,1,1,1,
+97,muse,1048,spatial,1,what is the direction of motion of the cyclist riding across the median relative to the camera?,there is no clearly visible cyclist riding across the median in the image.,"No cyclist riding across the median is visible in the image, so the question cannot be answered.",1,1,1,
+98,muse,1019,counting,0,"when retrieving items from the bag on the table, how many medicine containers would the robot find inside?",two.,The number of medicine containers inside the bag cannot be determined from the image.,0,0,0,
+99,muse,890,ocr,1,what is the price of 'Ice Cream' listed on the sidewalk chalkboard in front of the right buildings?,there is no sidewalk chalkboard.,The price of ice cream on a sidewalk chalkboard in front of the right buildings cannot be determined from the image.,1,1,1,trick; rule 6
+100,muse,1143,ocr,0,what is the license plate number of the Mazda car in the front?,the license plate reads SLJ1206Y.,The Mazda car in the front has license plate SLJ1206Y.,1,1,1,

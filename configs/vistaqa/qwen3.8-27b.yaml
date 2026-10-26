@@ -1,0 +1,12 @@
+# VistaQA base-VLM run (model settings only; choose questions on the command line).
+# Balanced 600 subset: add --per-category 100 --sample-seed 0. Full benchmark: no selection flags.
+# Shared settings across models: default prompt, temperature 0, reasoning off, <=512 answer tokens.
+dataset: vistaqa
+model: openrouter:qwen/qwen3.8-27b
+prompt: default
+generation:
+  temperature: 0
+  max_tokens: 512
+  extra:
+    reasoning: {enabled: false}
+concurrency: 8
