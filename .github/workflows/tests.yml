@@ -1,0 +1,25 @@
+# Runs the test suite on every pull request and on every push to main, so only tested code
+# gets merged. Tests are offline (SDK clients and tool models are stubbed): no API keys or GPU.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install (CPU-only PyTorch first, so pip doesn't pull the large CUDA build)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[all]"
+      - name: Run tests
+        run: pytest -q
