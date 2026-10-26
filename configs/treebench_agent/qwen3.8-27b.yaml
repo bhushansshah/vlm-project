@@ -1,0 +1,20 @@
+# TreeBench tool agent: Qwen3.8-27B with the same model settings as its best baseline
+# (configs/treebench_think_low/qwen3.8-27b.yaml: thinking low, bf16 providers, greedy), so any
+# difference comes from the agent. Default: tb2 instructions + the TreeBench tool set; for Bhushan's
+# VistaQA agent, add -a instructions=v2 (his default tools) or -a instructions=v4 -a verify=true.
+dataset: treebench
+model: openrouter:qwen/qwen3.8-27b
+prompt: default
+tag: think-low
+generation:
+  temperature: 0
+  max_tokens: 16384
+  extra:
+    reasoning: {effort: low}
+    provider: {quantizations: [bf16], require_parameters: true}
+agent: tools
+agent_options:
+  instructions: tb2
+  max_steps: 6
+  step_max_tokens: 6144
+concurrency: 8

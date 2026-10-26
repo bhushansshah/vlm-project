@@ -1,0 +1,17 @@
+# TreeBench tool agent: Muse Glimmer 30B with the settings of its baseline
+# (configs/treebench/muse-glimmer-30b.yaml: reasoning low, which its provider requires).
+dataset: treebench
+model: openrouter:meta/muse-glimmer-30b
+prompt: default
+generation:
+  temperature: 0
+  max_tokens: 8192
+  extra:
+    reasoning: {effort: low}
+    provider: {quantizations: [bf16], require_parameters: true}
+agent: tools
+agent_options:
+  instructions: tb2
+  max_steps: 6
+  step_max_tokens: 4096
+concurrency: 8

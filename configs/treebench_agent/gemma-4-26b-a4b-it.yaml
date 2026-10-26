@@ -1,0 +1,17 @@
+# TreeBench tool agent: Gemma 4 26B-A4B with the settings of its baseline
+# (configs/treebench/gemma-4-26b-a4b-it.yaml: thinking off; its thinking loops on TreeBench).
+dataset: treebench
+model: openrouter:google/gemma-4-26b-a4b-it
+prompt: default
+generation:
+  temperature: 0
+  max_tokens: 1024
+  extra:
+    reasoning: {enabled: false}
+    provider: {quantizations: [bf16], require_parameters: true}
+agent: tools
+agent_options:
+  instructions: tb2
+  max_steps: 6
+  step_max_tokens: 1536
+concurrency: 8

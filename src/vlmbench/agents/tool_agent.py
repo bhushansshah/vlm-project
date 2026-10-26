@@ -135,10 +135,25 @@ and stop. The result comes back in the next message. You can make up to {max_ste
 <evidence>[{{"label": "woman in red", "box": {{"left": 410, "top": 520, "right": 470, "bottom": 600}}}}]</evidence>
    - Then the letter of the option you choose, and nothing else, inside <answer></answer>, e.g. <answer>B</answer>."""
 
+# tb2 (after tuning round 1 on analysis/treebench_tuning_ids.txt): position-counting questions must
+# go through order; distance/depth are rough and lose to a clear view; "cannot be determined" options
+# are almost never right on TreeBench (the target is always there).
+INSTRUCTIONS["tb2"] = INSTRUCTIONS["tb1"].replace(
+    """   - "Counting from the left/right, which one" or "the n-th X": call order with the stated direction (limit the region to the part of the scene the question means), then check the labeled image for missed or doubled instances before counting.
+   - Nearer to or farther from the camera: depth. Distance between two objects: distance.""",
+    """   - Any question about a position in a row ("counting from the left/right", "the n-th X", "which one from near to far"): ALWAYS call order with the stated direction before answering (limit the region to the part of the scene the question means). Then check its labeled image: add instances it missed, remove ones it doubled or that are something else, and count again on the image.
+   - Nearer to or farther from the camera: depth. Distance between two objects: distance. Both are rough estimates from one picture: when objects stand clearly next to each other, or one clearly in front of the other, trust what you see over the numbers.""",
+).replace(
+    """   - Tool results can be wrong. If a result disagrees with what you clearly see, look again before deciding.""",
+    """   - Tool results can be wrong. If a result disagrees with what you clearly see, look again before deciding.
+   - Options like "cannot be determined" or "none of the above" are almost never the answer here: pick the option that fits best.""",
+)
+assert INSTRUCTIONS["tb2"].count("ALWAYS call order") == 1 and "almost never the answer" in INSTRUCTIONS["tb2"]
+
 # Tools each instruction version is written for (used when the run names no tools).
 V4_TOOLS = ("zoom", "grid", "detect", "count", "mark", "ocr", "depth", "distance")
 TB1_TOOLS = ("zoom", "grid", "enhance", "detect", "order", "depth", "distance", "colour", "orient", "viewpoint")
-INSTRUCTION_TOOLS = {"v4": V4_TOOLS, "tb1": TB1_TOOLS}
+INSTRUCTION_TOOLS = {"v4": V4_TOOLS, "tb1": TB1_TOOLS, "tb2": TB1_TOOLS}
 
 # Fragments of a model's own chat/tool-call template that some providers leak into the text
 # (e.g. "_calls> <ate", "essage|>"). Left in, the model sees them in its history and repeats them.
