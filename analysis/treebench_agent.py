@@ -133,7 +133,7 @@ def analyse_pair(label, base_name, agent_name, base, agent, samples, sizes, tuni
         cited = [e for e in ev if e["cited"]]
         miou = 100 * sum(e["miou"] for e in ev) / len(ev)
         md += ["", f"Evidence: boxes cited in {len(cited)} of {len(ev)} answers; TreeBench mIoU {miou:.1f} "
-                   f"({100 * sum(e['miou'] for e in cited) / len(cited):.1f} when cited); a tool call covered a target "
+                   f"({(100 * sum(e['miou'] for e in cited) / len(cited)) if cited else 0:.1f} when cited); a tool call covered a target "
                    f"on {pct(sum(e['inspected_target'] for e in ev), len(ev))}% of questions."]
         hit = [q for q, e in zip(qs, ev) if e["inspected_target"]]
         miss = [q for q, e in zip(qs, ev) if not e["inspected_target"]]
