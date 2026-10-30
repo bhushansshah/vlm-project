@@ -7,7 +7,6 @@ __pycache__/
 # secrets
 .env
 
-# dataset cache and run outputs
+# dataset cache and logs (run outputs in runs/ are committed through Git LFS, see .gitattributes)
 data/
-runs/
 logs/
