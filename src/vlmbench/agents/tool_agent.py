@@ -391,7 +391,8 @@ class ToolAgent(VLM):
             first = (reply.split() or [""])[0].strip(".,:*\"'").lower()
             ok = True if first == "yes" else False if first == "no" else None  # unclear: not held against it
             results.append({"label": ev["label"], "box": [round(v) for v in box], "ok": ok,
-                            "reason": reply[:300], "usage": asdict(comp.usage)})
+                            "reason": reply[:300], "usage": asdict(comp.usage),
+                            **({"reasoning": comp.reasoning} if comp.reasoning else {})})
         return results
 
     def generate(self, messages: list[Message], config: GenerationConfig) -> Completion:
@@ -416,7 +417,8 @@ class ToolAgent(VLM):
             if text.strip():
                 last_text = _ANSWER.sub(lambda m: m.group(1), text).strip()
             kind, payload, end = parse_step(text, set(self.tools), self._tool_params)
-            step = {"step": len(trace) + 1, "model_output": text[:end], "usage": asdict(comp.usage)}
+            step = {"step": len(trace) + 1, "model_output": text[:end], "usage": asdict(comp.usage),
+                    **({"reasoning": comp.reasoning} if comp.reasoning else {})}
 
             if kind in ("call", "bad_call") and calls < max_calls:
                 calls += 1

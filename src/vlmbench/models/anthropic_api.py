@@ -101,4 +101,6 @@ class AnthropicVLM(VLM):
         # Anthropic's input_tokens leaves out cached tokens; count them so input_tokens means all prompt tokens
         usage = Usage(input_tokens=u.input_tokens + cache_read + cache_write, output_tokens=u.output_tokens,
                       cached_tokens=cache_read)
-        return Completion(text=text, finish_reason=resp.stop_reason, usage=usage, raw=resp)
+        # extended thinking blocks (redacted ones carry no readable text)
+        thinking = "\n\n".join(b.thinking for b in resp.content if b.type == "thinking" and getattr(b, "thinking", None))
+        return Completion(text=text, finish_reason=resp.stop_reason, usage=usage, raw=resp, reasoning=thinking or None)

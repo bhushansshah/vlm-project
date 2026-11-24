@@ -132,7 +132,26 @@ class OpenAICompatVLM(VLM):
                 cost=_number(getattr(resp.usage, "cost", None)),  # OpenRouter only; other servers send none
             )
         return Completion(text=_with_tool_calls(choice.message), finish_reason=choice.finish_reason, usage=usage,
-                          raw=resp)
+                          raw=resp, reasoning=_reasoning_text(choice.message))
+
+
+def _reasoning_text(message) -> str | None:
+    """The thinking text a server returned beside the answer, if any: OpenRouter's ``reasoning``
+    (or its ``reasoning_details`` text / summary parts), vLLM's and SGLang's ``reasoning_content``.
+    Encrypted reasoning parts carry no readable text and are skipped."""
+    extra = getattr(message, "model_extra", None) or {}
+    for key in ("reasoning", "reasoning_content"):
+        val = getattr(message, key, None) or extra.get(key)
+        if isinstance(val, str) and val.strip():
+            return val
+    parts = []
+    for d in getattr(message, "reasoning_details", None) or extra.get("reasoning_details") or []:
+        if not isinstance(d, dict):
+            d = d.model_dump() if hasattr(d, "model_dump") else vars(d)
+        txt = d.get("text") or d.get("summary")
+        if isinstance(txt, str) and txt.strip():
+            parts.append(txt)
+    return "\n\n".join(parts) or None
 
 
 def _number(x: Any) -> float | None:

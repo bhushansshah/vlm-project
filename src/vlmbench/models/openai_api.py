@@ -93,4 +93,8 @@ class OpenAIResponsesVLM(VLM):
         finish = resp.status
         if resp.incomplete_details is not None:
             finish = f"incomplete:{resp.incomplete_details.reason}"
-        return Completion(text=resp.output_text, finish_reason=finish, usage=usage, raw=resp)
+        # reasoning summaries, present only when requested, e.g. reasoning={"effort": ..., "summary": "auto"}
+        summaries = [s.text for item in getattr(resp, "output", None) or [] if getattr(item, "type", None) == "reasoning"
+                     for s in getattr(item, "summary", None) or [] if getattr(s, "text", None)]
+        return Completion(text=resp.output_text, finish_reason=finish, usage=usage, raw=resp,
+                          reasoning="\n\n".join(summaries) or None)

@@ -270,3 +270,30 @@ def test_v4_defaults_to_its_tools_and_old_runs_keep_their_name(tmp_path, vistaqa
     cfg = replace(cfg, agent_options={"instructions": "v4", "protocol": "native", "verify": True})
     assert cfg.run_dir().name == "vistaqa__scripted__x__default__agent-tools-v4-native-verify"
     assert replace(cfg, tag="reason-medium").run_dir().name.endswith("-v4-native-verify__reason-medium")
+
+
+class Thinking(Scripted):
+    """Scripted model that also returns thinking text, like a reasoning model behind OpenRouter."""
+
+    def generate(self, messages, config):
+        comp = super().generate(messages, config)
+        comp.reasoning = f"thought {len(self.seen)}"
+        return comp
+
+
+def test_thinking_text_is_saved_per_step_and_per_answer(tmp_path, vistaqa, image_path):
+    agent = ToolAgent(Thinking([
+        '<tool_call>{"name": "zoom", "arguments": {"box": [0, 0, 500, 500]}}</tool_call>',
+        "<answer>3</answer>",
+    ]), tools=["zoom"])
+    out = agent.generate(_question(image_path), GenerationConfig())
+    assert [s["reasoning"] for s in out.trace] == ["thought 1", "thought 2"]
+    # thinking stays out of what the model is sent back
+    assert all("thought" not in p.text for m in agent.inner.seen[1] for p in m.content if isinstance(p, TextPart))
+
+    # a plain (non-agent) run keeps the thinking text on the record
+    cfg = RunConfig(model="scripted:x", dataset="vistaqa", data_dir=str(vistaqa.data_dir),
+                    output_dir=str(tmp_path / "runs"))
+    Runner(Thinking(["a"] * 12), vistaqa, cfg).run(vistaqa.load())
+    rec = read_records(cfg.run_dir() / "responses.jsonl")["1"]
+    assert rec["response"] == "a" and rec["reasoning"].startswith("thought ")

@@ -164,3 +164,58 @@ def test_usage_add_and_totals():
     assert t["input"] == 10 and t["calls"] == 1 and t["cost_usd"] is None and t["cached"] is None
     t = usage_totals(old + [{"input_tokens": 5, "cost": 0.1, "cached_tokens": 2}])
     assert t["cost_usd"] == 0.1 and t["cost_reported_calls"] == 1 and t["calls"] == 2 and t["cached"] == 2
+
+
+def _openrouter(monkeypatch, message):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "x")
+    m = load_model("openrouter:qwen/test")
+    m.client.chat.completions.create = lambda **kw: SimpleNamespace(
+        choices=[SimpleNamespace(message=message, finish_reason="stop")],
+        usage=SimpleNamespace(prompt_tokens=5, completion_tokens=9, completion_tokens_details=None))
+    return m.generate([Message.user("q")], GenerationConfig())
+
+
+def test_openai_compat_saves_reasoning_text(monkeypatch):
+    # OpenRouter: plain `reasoning` string
+    out = _openrouter(monkeypatch, SimpleNamespace(content="3", reasoning="I count three cups."))
+    assert out.text == "3" and out.reasoning == "I count three cups."
+    assert out.to_dict()["reasoning"] == "I count three cups."
+    # OpenRouter reasoning_details in model_extra: text and summary kept, encrypted parts skipped
+    details = [{"type": "reasoning.summary", "summary": "S1"}, {"type": "reasoning.encrypted", "data": "xx"},
+               {"type": "reasoning.text", "text": "T2"}]
+    out = _openrouter(monkeypatch, SimpleNamespace(content="3", model_extra={"reasoning_details": details}))
+    assert out.reasoning == "S1\n\nT2"
+    # vLLM / SGLang: reasoning_content
+    out = _openrouter(monkeypatch, SimpleNamespace(content="3", reasoning_content="think"))
+    assert out.reasoning == "think"
+    # nothing returned: no field, and to_dict leaves it out
+    out = _openrouter(monkeypatch, SimpleNamespace(content="3"))
+    assert out.reasoning is None and "reasoning" not in out.to_dict()
+
+
+def test_other_backends_save_reasoning_text(image_path):
+    m = load_model("anthropic:claude-test", api_key="x")
+    m.client.messages.create = lambda **kw: SimpleNamespace(
+        content=[SimpleNamespace(type="thinking", thinking="Look left."), SimpleNamespace(type="redacted_thinking"),
+                 SimpleNamespace(type="text", text="B")], stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=7, output_tokens=1))
+    out = m.generate(_msgs(image_path), GenerationConfig())
+    assert out.text == "B" and out.reasoning == "Look left."
+
+    g = load_model("gemini:gemini-test", api_key="x")
+    parts = [SimpleNamespace(thought=True, text="Summary of thoughts"), SimpleNamespace(thought=None, text="C")]
+    g.client = SimpleNamespace(models=SimpleNamespace(generate_content=lambda **kw: SimpleNamespace(
+        text="C", prompt_feedback=None,
+        candidates=[SimpleNamespace(finish_reason=SimpleNamespace(value="STOP"), content=SimpleNamespace(parts=parts))],
+        usage_metadata=SimpleNamespace(prompt_token_count=9, candidates_token_count=1, thoughts_token_count=20))))
+    out = g.generate(_msgs(image_path), GenerationConfig())
+    assert out.text == "C" and out.reasoning == "Summary of thoughts"
+
+    o = load_model("openai:gpt-test", api_key="x")
+    o.client.responses.create = lambda **kw: SimpleNamespace(
+        output_text="A", status="completed", incomplete_details=None,
+        output=[SimpleNamespace(type="reasoning", summary=[SimpleNamespace(text="Checked the sign.")]),
+                SimpleNamespace(type="message")],
+        usage=SimpleNamespace(input_tokens=10, output_tokens=1, output_tokens_details=SimpleNamespace(reasoning_tokens=5)))
+    out = o.generate(_msgs(image_path), GenerationConfig())
+    assert out.text == "A" and out.reasoning == "Checked the sign."

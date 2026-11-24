@@ -128,4 +128,11 @@ class GeminiVLM(VLM):
             reasoning_tokens=getattr(um, "thoughts_token_count", None),
             cached_tokens=getattr(um, "cached_content_token_count", None),
         )
-        return Completion(text=resp.text, finish_reason=finish, usage=usage, raw=resp)
+        # thought summaries, present only when thinking_config has include_thoughts=True
+        thoughts = []
+        for cand in (resp.candidates or [])[:1]:
+            for part in getattr(getattr(cand, "content", None), "parts", None) or []:
+                if getattr(part, "thought", False) and getattr(part, "text", None):
+                    thoughts.append(part.text)
+        return Completion(text=resp.text, finish_reason=finish, usage=usage, raw=resp,
+                          reasoning="\n\n".join(thoughts) or None)

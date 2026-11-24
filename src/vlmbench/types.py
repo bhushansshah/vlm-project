@@ -133,9 +133,14 @@ class Completion:
     usage: Usage = field(default_factory=Usage)
     raw: Any = None  # provider response object, not serialized
     trace: list[dict[str, Any]] | None = None  # agent steps (tool calls and results), when an agent produced it
+    # The model's thinking text, where the provider returns it (full text, or only a summary for some
+    # providers). Saved for analysis only; it is never part of the answer or sent back to the model.
+    reasoning: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = {"text": self.text, "finish_reason": self.finish_reason, "usage": asdict(self.usage)}
+        if self.reasoning:
+            d["reasoning"] = self.reasoning
         if self.trace is not None:
             d["trace"] = self.trace
         return d

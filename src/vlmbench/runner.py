@@ -169,6 +169,7 @@ class Runner:
             "attempts": attempts,
             "error": error,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            **({"reasoning": comp.reasoning} if comp is not None and comp.reasoning else {}),
             **({"trace": comp.trace} if comp is not None and comp.trace is not None else {}),
         }
 
