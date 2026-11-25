@@ -1,0 +1,25 @@
+# Quadro variant (float16 server, own run dir). TreeBench, no tools: Qwen3.5-4B (newest small Qwen VLM, Feb 2026) on a local GPU behind vLLM.
+# Thinking ON (Qwen3.5 has on/off only, no effort levels). Sampling = Qwen's recommended
+# thinking-mode settings from the model card (temperature 1.0, top_p 0.95, top_k 20,
+# presence_penalty 1.5). max_tokens 25000: answers cut off at the limit are graded wrong.
+# Same user-only prompt as the team's TreeBench runs (no system prompt).
+# Server: slurm/treebench_qwen35_4b.sh starts `vllm serve` on this port with --reasoning-parser qwen3,
+# so the thinking text is split from the answer and saved as `reasoning`.
+dataset: treebench
+model: vllm:Qwen/Qwen3.5-4B
+model_options:
+  base_url: http://localhost:18431/v1
+tag: think-fp16
+prompt: default
+generation:
+  temperature: 1.0
+  top_p: 0.95
+  max_tokens: 25000
+  seed: 0
+  extra:
+    top_k: 20
+    min_p: 0.0
+    presence_penalty: 1.5
+    repetition_penalty: 1.0
+    chat_template_kwargs: {enable_thinking: true}
+concurrency: 32
