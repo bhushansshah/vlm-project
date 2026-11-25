@@ -72,6 +72,12 @@ def test_viewpoint_tool_flips_left_right_for_a_reference_facing_the_camera(ctx):
     assert toward.images and "point of view" in toward.text
     with pytest.raises(ToolError):
         vp(ctx, {"reference": ref, "targets": target})  # facing is required
+    # "facing" next to "reference" (a common slip) is moved into it
+    slip = vp(ctx, {"reference": ref, "facing": "toward_camera", "targets": target})
+    assert slip.data["targets"] == toward.data["targets"]
+    # facing given in both places: the one inside reference counts, the stray one is still an error
+    with pytest.raises(ToolError, match="unknown argument"):
+        vp(ctx, {"reference": {**ref, "facing": "toward_camera"}, "facing": "away_from_camera", "targets": target})
 
 
 def test_order_sorts_in_the_stated_direction(ctx, monkeypatch):

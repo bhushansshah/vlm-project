@@ -1,0 +1,42 @@
+# TreeBench tool agent: Qwen3.5-4B (thinking on) behind a local vLLM server, six tools only
+# (zoom, detect, depth, distance, orient, viewpoint: the tb3 instructions' tool set).
+# Same model, sampling and float16 server as the no-tools baseline
+# (qwen3.5-4b-think-fp16.yaml, run "...__default__think-fp16"), so differences come from the agent.
+#
+# - protocol native: tools are declared in the API's tool field; Qwen3.5's chat template lists them
+#   in the system prompt and the model calls them in its own trained format (<tool_call><function=...>),
+#   parsed by vLLM (--tool-call-parser qwen3_coder). One call per reply: extra calls are dropped and
+#   the model is told so.
+# - instructions_in system: the tb3 instructions follow the tool definitions in the system prompt;
+#   the user turn is the image and the question, exactly as in the baseline.
+# - max_steps 20 is a safety cap, not a budget: the instructions tell the model to stop calling tools
+#   as soon as the answer is clear.
+# - step_max_tokens 32768: output budget per model turn (thinking + reply); the baseline had 25000 for
+#   its single turn. The server's context is 131072 (slurm/treebench_qwen35_4b_agent.sh).
+# - timeout 3600 s per request: the baseline's 600 s client timeout cut off 19 long answers.
+dataset: treebench
+model: vllm:Qwen/Qwen3.5-4B
+model_options:
+  base_url: http://localhost:18431/v1
+  timeout: 3600
+tag: think-fp16
+prompt: default
+generation:
+  temperature: 1.0
+  top_p: 0.95
+  max_tokens: 32768
+  seed: 0
+  extra:
+    top_k: 20
+    min_p: 0.0
+    presence_penalty: 1.5
+    repetition_penalty: 1.0
+    chat_template_kwargs: {enable_thinking: true}
+agent: tools
+agent_options:
+  instructions: tb3
+  protocol: native
+  instructions_in: system
+  max_steps: 20
+  step_max_tokens: 32768
+concurrency: 16

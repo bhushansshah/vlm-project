@@ -150,10 +150,39 @@ INSTRUCTIONS["tb2"] = INSTRUCTIONS["tb1"].replace(
 )
 assert INSTRUCTIONS["tb2"].count("ALWAYS call order") == 1 and "almost never the answer" in INSTRUCTIONS["tb2"]
 
+# tb3 (TreeBench, small models, native tool calling): six tools only (zoom, detect, depth, distance,
+# orient, viewpoint). Written for protocol="native": the tools' definitions reach the model through
+# the API's tool field (the model's chat template lists them in its system prompt) and calls use the
+# model's own tool-call format, so there is no tool list, example calls or <action> syntax here.
+# Without order, position questions sort detect's boxes. No fixed tool-call budget is implied:
+# {max_steps} is a safety cap.
+INSTRUCTIONS["tb3"] = """You are answering a multiple-choice question about an image. You can call tools to inspect the image before you answer.
+
+Coordinates: every box is {{"left": .., "top": .., "right": .., "bottom": ..}} on a 0-1000 scale of the ORIGINAL image. left and right are horizontal positions (0 = left edge, 1000 = right edge); top and bottom are vertical positions (0 = top edge, 1000 = bottom edge). Example: the top-right quarter of the image is {{"left": 500, "top": 0, "right": 1000, "bottom": 500}}. The original image is {width}x{height} pixels.
+
+How to work:
+1. Read the question and the options. Before each tool call, say in one or two sentences what you see so far and what the call will check. Call ONE tool per reply and wait for its result, which comes back in the next message; then decide the next step. Use as many calls as the question needs (at most {max_steps}), and stop calling tools as soon as the answer is clear.
+2. Everything the question describes is in the image, even when it is small, far away or partly hidden. If you cannot find it, zoom in or use detect instead of concluding it is missing.
+3. What works for each kind of question:
+   - "From X's perspective / viewpoint, where is Y?": left and right are X's own, not the camera's. A person facing the camera has their left on the image's RIGHT. Do these steps:
+     a. Find X and Y. Get a box for each.
+     b. Find which way X faces. For a person, call orient on X's box. Then check its answer: in its picture, red is X's left side and blue is X's right side. If you can see X's face, X faces the camera. If you see the back of X's head, X faces away from the camera. If orient matches what you see, use its angle as the facing. If it does not match, use what you see: "toward_camera", "away_from_camera", "image_left" or "image_right". For a vehicle or animal, use the way its front points.
+     c. Call viewpoint with X's box and that facing, and with Y's box. Use its answer. Its last line says where the camera is from X's view. If that does not match the image, the facing is wrong: fix it and call viewpoint again.
+   - "Counting from the left/right, which one" or "the n-th X": call detect to find every instance (limit the region to the part of the scene the question means). Its boxes are listed top to bottom, so put them in the order the question asks yourself (left to right = increasing "left" value), and check its numbered image for missed or doubled instances before counting.
+   - Nearer to or farther from the camera: depth. Distance between two objects: distance. Both are rough estimates from one picture: when one object is clearly in front of the other, trust what you see over the numbers.
+   - Small details (text, colour, material, the state of a small object): zoom in on it.
+   - Tool results can be wrong. If a result disagrees with what you clearly see, look again before deciding.
+   - Options like "cannot be determined" or "none of the above" are almost never the answer here: pick the option that fits best.
+4. When you are ready, reply without a tool call and finish with your evidence and ONE answer:
+   - First give tight boxes for the objects your answer is about (at most 3), e.g.
+<evidence>[{{"label": "woman in red", "box": {{"left": 410, "top": 520, "right": 470, "bottom": 600}}}}]</evidence>
+   - Then the letter of the option you choose, and nothing else, inside <answer></answer>, e.g. <answer>B</answer>."""
+
 # Tools each instruction version is written for (used when the run names no tools).
 V4_TOOLS = ("zoom", "grid", "detect", "count", "mark", "ocr", "depth", "distance")
 TB1_TOOLS = ("zoom", "grid", "enhance", "detect", "order", "depth", "distance", "colour", "orient", "viewpoint")
-INSTRUCTION_TOOLS = {"v4": V4_TOOLS, "tb1": TB1_TOOLS, "tb2": TB1_TOOLS}
+TB3_TOOLS = ("zoom", "detect", "depth", "distance", "orient", "viewpoint")
+INSTRUCTION_TOOLS = {"v4": V4_TOOLS, "tb1": TB1_TOOLS, "tb2": TB1_TOOLS, "tb3": TB3_TOOLS}
 
 # Fragments of a model's own chat/tool-call template that some providers leak into the text
 # (e.g. "_calls> <ate", "essage|>"). Left in, the model sees them in its history and repeats them.
@@ -263,6 +292,9 @@ class ToolAgent(VLM):
             instructions) with a separate yes/no call per box; if one fails, the model is told and
             gets one more chance (with verify_extra_calls more tool calls). Default False.
         verify_extra_calls: tool calls allowed after a failed check (default 2)
+        instructions_in: "user" (default) puts the agent instructions at the start of the first user
+            turn, before the image and question; "system" sends them as the system prompt instead
+            (after the tool definitions, for chat templates that list tools there)
     """
 
     provider = "agent"
@@ -271,11 +303,14 @@ class ToolAgent(VLM):
                  tool_options: dict[str, dict[str, Any]] | None = None, max_steps: int = 6,
                  step_max_tokens: int | None = None, keep_last_images: int | None = None, max_retries: int = 3,
                  native_tools: bool = True, instructions: str = "v1", protocol: str = "text",
-                 verify: bool = False, verify_extra_calls: int = 2):
+                 verify: bool = False, verify_extra_calls: int = 2, instructions_in: str = "user"):
         if instructions not in INSTRUCTIONS:
             raise ValueError(f"Unknown instructions {instructions!r}. Available: {sorted(INSTRUCTIONS)}")
         if protocol not in ("text", "native"):
             raise ValueError(f"protocol must be 'text' or 'native', got {protocol!r}")
+        if instructions_in not in ("user", "system"):
+            raise ValueError(f"instructions_in must be 'user' or 'system', got {instructions_in!r}")
+        self.instructions_in = instructions_in
         self.instructions = instructions
         self.inner = model
         tools = tools or list(INSTRUCTION_TOOLS.get(instructions, ())) or None
@@ -299,6 +334,8 @@ class ToolAgent(VLM):
             opts["protocol"] = protocol
         if verify:
             opts.update(verify=True, verify_extra_calls=verify_extra_calls)
+        if instructions_in != "user":
+            opts["instructions_in"] = instructions_in
         super().__init__(model.model, **opts)
 
     def describe(self) -> dict[str, Any]:
@@ -327,6 +364,8 @@ class ToolAgent(VLM):
         intro = INSTRUCTIONS[self.instructions].format(width=w, height=h, tools=self._tool_list(),
                                                        examples=self._examples(), max_steps=self.max_steps)
         system = [p for m in messages if m.role == "system" for p in m.content]
+        if self.instructions_in == "system":
+            return [Message("system", [TextPart(intro), *system]), Message("user", [image, *question])]
         return [Message("user", [TextPart(intro), *system, image, *question])]
 
     def _trim_images(self, convo: list[Message]) -> None:
@@ -349,7 +388,9 @@ class ToolAgent(VLM):
     def _run_tool(self, ctx: ToolContext, call: dict[str, Any]):
         tool = self.tools.get(call["name"])
         if tool is None:
-            return None, f"Error: unknown tool '{call['name']}'. Available: {', '.join(self.tools)}.", True
+            # models sometimes "call" their answer (e.g. a made-up answer tool): say how to answer instead
+            return None, (f"Error: unknown tool '{call['name']}'. Available: {', '.join(self.tools)}. "
+                          "To give your final answer, do not call a tool: write <answer>...</answer>."), True
         try:
             return tool(ctx, call["arguments"]), None, False
         except ToolError as e:
@@ -400,7 +441,9 @@ class ToolAgent(VLM):
         ctx = ToolContext(image=image.load().convert("RGB"))
         convo = self._start(messages, ctx)
         cfg = replace(config, max_tokens=self.step_max_tokens or config.max_tokens or 1024,
-                      stop=[*(config.stop or []), "</action>"],
+                      # text protocol: stop after the call. Not with native calls: the model's own
+                      # format ends the turn, and a stop string would also fire inside its thinking
+                      stop=[*(config.stop or []), *([] if self.native else ["</action>"])] or None,
                       tools=[t.spec() for t in self.tools.values()] if self.native_tools else None)
         seen_calls: dict[str, int] = {}  # exact repeat calls -> the step that first made them
         usage, trace = Usage(), []
@@ -443,6 +486,11 @@ class ToolAgent(VLM):
                 left = max_calls - calls
                 note = (f"You have {left} tool call(s) left." if left else
                         "You have no tool calls left. Give your final answer inside <answer></answer>.")
+                n_calls = len(_CALL.findall(text))
+                if n_calls > 1:  # only the first call of a reply runs
+                    note = (f"You made {n_calls} tool calls in one reply; only the first was run. Call one tool "
+                            "per reply. " + note)
+                    step["extra_calls_dropped"] = n_calls - 1
                 images = result.images if result else []
                 self._add_result(convo, said, payload if kind == "call" else None, f"call_{calls}", obs,
                                  images, note)

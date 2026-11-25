@@ -74,6 +74,8 @@ class RunConfig:
                 name += "-" + str(self.agent_options["protocol"])
             if self.agent_options.get("verify"):
                 name += "-verify"
+            if self.agent_options.get("instructions_in", "user") != "user":
+                name += "-sys"
         if self.tag:
             name += f"__{self.tag}"
         return name

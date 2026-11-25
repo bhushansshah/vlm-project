@@ -297,3 +297,55 @@ def test_thinking_text_is_saved_per_step_and_per_answer(tmp_path, vistaqa, image
     Runner(Thinking(["a"] * 12), vistaqa, cfg).run(vistaqa.load())
     rec = read_records(cfg.run_dir() / "responses.jsonl")["1"]
     assert rec["response"] == "a" and rec["reasoning"].startswith("thought ")
+
+
+def test_tb3_instructions_in_system_prompt_with_native_calls(image_path):
+    call = '<action>{"name": "zoom", "arguments": {"box": [0, 0, 500, 500]}}</action>'
+    model = Scripted([call, "<answer>B</answer>"], native=True)
+    agent = ToolAgent(model, instructions="tb3", protocol="native", instructions_in="system")
+    assert list(agent.tools) == ["zoom", "detect", "depth", "distance", "orient", "viewpoint"]
+    out = agent.generate(_question(image_path), GenerationConfig())
+    assert out.text == "B"
+    first = model.seen[0]
+    assert [m.role for m in first] == ["system", "user"]
+    assert "Call ONE tool per reply" in first[0].content[0].text
+    assert "call orient on X's box. Then check its answer" in first[0].content[0].text
+    assert isinstance(first[1].content[0], ImagePart)  # the user turn is just the image and question
+    # native calls end the turn themselves: no </action> stop string (it would also fire in the thinking)
+    assert not (model.configs[0].stop or [])
+    # the text protocol keeps it
+    model = Scripted(["<answer>B</answer>"])
+    ToolAgent(model, instructions="tb3").generate(_question(image_path), GenerationConfig())
+    assert model.configs[0].stop == ["</action>"]
+    assert [m.role for m in model.seen[0]] == ["user"]
+
+
+def test_only_the_first_of_several_calls_runs(image_path):
+    two = ('<action>{"name": "zoom", "arguments": {"box": [0, 0, 500, 500]}}</action>'
+           '<action>{"name": "zoom", "arguments": {"box": [500, 500, 1000, 1000]}}</action>')
+    model = Scripted([two, "<answer>B</answer>"], native=True)
+    out = ToolAgent(model, tools=["zoom"], protocol="native").generate(_question(image_path), GenerationConfig())
+    step = out.trace[0]
+    assert step["arguments"] == {"box": [0, 0, 500, 500]} and step["extra_calls_dropped"] == 1
+    note = model.seen[1][-1].content[-1].text
+    assert "only the first was run" in note
+
+
+def test_instructions_in_system_names_the_run(tmp_path, vistaqa):
+    cfg = RunConfig(model="scripted", dataset="treebench", output_dir=str(tmp_path), agent="tools",
+                    agent_options={"instructions": "tb3", "protocol": "native"})
+    assert cfg.run_dir().name == "treebench__scripted__default__agent-tools-tb3-native"
+    sys_cfg = replace(cfg, agent_options={**cfg.agent_options, "instructions_in": "system"}, tag="think")
+    assert sys_cfg.run_dir().name == "treebench__scripted__default__agent-tools-tb3-native-sys__think"
+    agent = ToolAgent(Scripted([]), instructions="tb3", instructions_in="system")
+    assert agent.options["instructions_in"] == "system"
+    assert "instructions_in" not in ToolAgent(Scripted([]), instructions="tb3").options
+
+
+def test_unknown_tool_error_says_how_to_answer(image_path):
+    fake = '<action>{"name": "answer", "arguments": {"letter": "D"}}</action>'
+    model = Scripted([fake, "<answer>D</answer>"], native=True)
+    out = ToolAgent(model, instructions="tb3", protocol="native").generate(_question(image_path), GenerationConfig())
+    assert out.text == "D"
+    obs = out.trace[0]["observation"]
+    assert "unknown tool 'answer'" in obs and "do not call a tool: write <answer>" in obs

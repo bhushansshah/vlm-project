@@ -121,6 +121,15 @@ class Viewpoint(Tool):
         super().__init__(**options)
         self.distance = Distance(**options)  # depth map + back-projection, shared with depth/distance
 
+    def __call__(self, ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
+        # a common slip: "facing" passed next to "reference" instead of inside it
+        if isinstance(args, dict) and "facing" in args and isinstance(args.get("reference"), dict) \
+                and "facing" not in args["reference"]:
+            facing = args["facing"]
+            args = {k: v for k, v in args.items() if k != "facing"}
+            args["reference"] = {**args["reference"], "facing": facing}
+        return super().__call__(ctx, args)
+
     def run(self, ctx: ToolContext, reference: Any = None, targets: Any = None) -> ToolResult:
         if not isinstance(reference, dict) or "box" not in reference:
             raise ToolError('reference needs "label", "box" and "facing"')
