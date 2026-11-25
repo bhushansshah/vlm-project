@@ -1,0 +1,201 @@
+{
+  "n_questions": 405,
+  "n_errors": 19,
+  "error_types": {
+    "APITimeoutError": 19
+  },
+  "per_category": {
+    "Perception/Attributes": {
+      "n": 29,
+      "errors": 0
+    },
+    "Perception/Material": {
+      "n": 13,
+      "errors": 0
+    },
+    "Perception/OCR": {
+      "n": 68,
+      "errors": 0
+    },
+    "Perception/Object Retrieval": {
+      "n": 16,
+      "errors": 0
+    },
+    "Perception/Physical State": {
+      "n": 23,
+      "errors": 0
+    },
+    "Reasoning/Comparison": {
+      "n": 44,
+      "errors": 0
+    },
+    "Reasoning/Contact and Occlusion": {
+      "n": 41,
+      "errors": 2
+    },
+    "Reasoning/Ordering": {
+      "n": 57,
+      "errors": 14
+    },
+    "Reasoning/Perspective Transform": {
+      "n": 85,
+      "errors": 3
+    },
+    "Reasoning/Spatial Containment": {
+      "n": 29,
+      "errors": 0
+    }
+  },
+  "finish_reasons": {
+    "stop": 377,
+    "abort": 9,
+    "None": 19
+  },
+  "tokens": {
+    "input": 1315203,
+    "output": 1001313,
+    "reasoning": 998249,
+    "cached": null
+  },
+  "cost": {
+    "usd": null,
+    "calls_with_cost": 0,
+    "calls": 386
+  },
+  "latency_s": {
+    "median": 219.285,
+    "p95": 5156.484
+  },
+  "accuracy": {
+    "overall": {
+      "n": 405,
+      "correct": 200,
+      "acc": 49.38,
+      "ci95": [
+        44.5,
+        54.2
+      ]
+    },
+    "per_group": {
+      "Perception": {
+        "n": 149,
+        "correct": 104,
+        "acc": 69.8,
+        "ci95": [
+          62.0,
+          76.6
+        ]
+      },
+      "Reasoning": {
+        "n": 256,
+        "correct": 96,
+        "acc": 37.5,
+        "ci95": [
+          31.8,
+          43.6
+        ]
+      }
+    },
+    "per_category": {
+      "Perception/Attributes": {
+        "n": 29,
+        "correct": 16,
+        "acc": 55.17,
+        "ci95": [
+          37.5,
+          71.6
+        ]
+      },
+      "Perception/Material": {
+        "n": 13,
+        "correct": 6,
+        "acc": 46.15,
+        "ci95": [
+          23.2,
+          70.9
+        ]
+      },
+      "Perception/OCR": {
+        "n": 68,
+        "correct": 56,
+        "acc": 82.35,
+        "ci95": [
+          71.6,
+          89.6
+        ]
+      },
+      "Perception/Object Retrieval": {
+        "n": 16,
+        "correct": 12,
+        "acc": 75.0,
+        "ci95": [
+          50.5,
+          89.8
+        ]
+      },
+      "Perception/Physical State": {
+        "n": 23,
+        "correct": 14,
+        "acc": 60.87,
+        "ci95": [
+          40.8,
+          77.8
+        ]
+      },
+      "Reasoning/Comparison": {
+        "n": 44,
+        "correct": 21,
+        "acc": 47.73,
+        "ci95": [
+          33.8,
+          62.1
+        ]
+      },
+      "Reasoning/Contact and Occlusion": {
+        "n": 41,
+        "correct": 22,
+        "acc": 53.66,
+        "ci95": [
+          38.7,
+          67.9
+        ]
+      },
+      "Reasoning/Ordering": {
+        "n": 57,
+        "correct": 15,
+        "acc": 26.32,
+        "ci95": [
+          16.6,
+          39.0
+        ]
+      },
+      "Reasoning/Perspective Transform": {
+        "n": 85,
+        "correct": 15,
+        "acc": 17.65,
+        "ci95": [
+          11.0,
+          27.1
+        ]
+      },
+      "Reasoning/Spatial Containment": {
+        "n": 29,
+        "correct": 23,
+        "acc": 79.31,
+        "ci95": [
+          61.6,
+          90.2
+        ]
+      }
+    }
+  },
+  "answer_letters": {
+    "A": 107,
+    "B": 118,
+    "C": 101,
+    "D": 51,
+    "none": 28
+  },
+  "cut_off": 0,
+  "note": "Graded locally against TreeBench's public answers; `vlmbench report` works without a judge."
+}

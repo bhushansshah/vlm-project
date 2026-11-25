@@ -1,0 +1,144 @@
+{
+  "n_questions": 145,
+  "n_errors": 0,
+  "error_types": {},
+  "per_category": {
+    "Perception/Attributes": {
+      "n": 18,
+      "errors": 0
+    },
+    "Perception/Material": {
+      "n": 13,
+      "errors": 0
+    },
+    "Perception/OCR": {
+      "n": 31,
+      "errors": 0
+    },
+    "Perception/Object Retrieval": {
+      "n": 16,
+      "errors": 0
+    },
+    "Perception/Physical State": {
+      "n": 23,
+      "errors": 0
+    },
+    "Reasoning/Comparison": {
+      "n": 44,
+      "errors": 0
+    }
+  },
+  "finish_reasons": {
+    "stop": 145
+  },
+  "tokens": {
+    "input": 499183,
+    "output": 428233,
+    "reasoning": 425380,
+    "cached": null
+  },
+  "cost": {
+    "usd": null,
+    "calls_with_cost": 0,
+    "calls": 145
+  },
+  "latency_s": {
+    "median": 215.275,
+    "p95": 5161.178
+  },
+  "accuracy": {
+    "overall": {
+      "n": 145,
+      "correct": 90,
+      "acc": 62.07,
+      "ci95": [
+        54.0,
+        69.6
+      ]
+    },
+    "per_group": {
+      "Perception": {
+        "n": 101,
+        "correct": 68,
+        "acc": 67.33,
+        "ci95": [
+          57.7,
+          75.7
+        ]
+      },
+      "Reasoning": {
+        "n": 44,
+        "correct": 22,
+        "acc": 50.0,
+        "ci95": [
+          35.8,
+          64.2
+        ]
+      }
+    },
+    "per_category": {
+      "Perception/Attributes": {
+        "n": 18,
+        "correct": 9,
+        "acc": 50.0,
+        "ci95": [
+          29.0,
+          71.0
+        ]
+      },
+      "Perception/Material": {
+        "n": 13,
+        "correct": 6,
+        "acc": 46.15,
+        "ci95": [
+          23.2,
+          70.9
+        ]
+      },
+      "Perception/OCR": {
+        "n": 31,
+        "correct": 27,
+        "acc": 87.1,
+        "ci95": [
+          71.1,
+          94.9
+        ]
+      },
+      "Perception/Object Retrieval": {
+        "n": 16,
+        "correct": 12,
+        "acc": 75.0,
+        "ci95": [
+          50.5,
+          89.8
+        ]
+      },
+      "Perception/Physical State": {
+        "n": 23,
+        "correct": 14,
+        "acc": 60.87,
+        "ci95": [
+          40.8,
+          77.8
+        ]
+      },
+      "Reasoning/Comparison": {
+        "n": 44,
+        "correct": 22,
+        "acc": 50.0,
+        "ci95": [
+          35.8,
+          64.2
+        ]
+      }
+    }
+  },
+  "answer_letters": {
+    "A": 31,
+    "B": 52,
+    "C": 47,
+    "D": 15
+  },
+  "cut_off": 0,
+  "note": "Graded locally against TreeBench's public answers; `vlmbench report` works without a judge."
+}

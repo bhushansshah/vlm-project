@@ -1,0 +1,53 @@
+{
+  "model": "vllm:Qwen/Qwen3.5-4B",
+  "dataset": "treebench",
+  "model_options": {
+    "base_url": "http://localhost:18431/v1"
+  },
+  "generation": {
+    "max_tokens": 25000,
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "seed": 0,
+    "stop": null,
+    "tools": null,
+    "extra": {
+      "top_k": 20,
+      "min_p": 0.0,
+      "presence_penalty": 1.5,
+      "repetition_penalty": 1.0,
+      "chat_template_kwargs": {
+        "enable_thinking": true
+      }
+    }
+  },
+  "prompt": "default",
+  "agent": null,
+  "agent_options": {},
+  "run_name": null,
+  "tag": "think-fp16",
+  "output_dir": "runs",
+  "concurrency": 32,
+  "batch_size": 1,
+  "max_retries": 5,
+  "retry_errors": false,
+  "data_dir": null,
+  "categories": null,
+  "question_ids": null,
+  "filters": null,
+  "per_category": null,
+  "limit": null,
+  "sample_seed": null,
+  "backend": {
+    "provider": "vllm",
+    "model": "Qwen/Qwen3.5-4B",
+    "options": {
+      "preset": "vllm",
+      "base_url": "http://localhost:18431/v1",
+      "image_detail": null,
+      "max_side": null,
+      "max_pixels": null
+    }
+  },
+  "updated_at": "2026-11-24T21:46:41.293371+00:00"
+}

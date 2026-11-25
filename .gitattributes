@@ -1,0 +1,5 @@
+# Run outputs kept in the repository go through Git LFS: responses.jsonl holds every answer with its
+# thinking text and agent traces (megabytes per run). runs/ stays in .gitignore (it may be a symlink
+# to scratch storage); runs worth keeping are added explicitly: git add -f runs/<run>/*
+# config.json and summary.json stay in plain git: small and readable in diffs.
+runs/**/*.jsonl filter=lfs diff=lfs merge=lfs -text
