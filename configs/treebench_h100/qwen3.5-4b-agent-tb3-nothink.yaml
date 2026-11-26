@@ -1,0 +1,37 @@
+# TreeBench, Qwen3.5-4B, tb3 tool agent (six tools: zoom, detect, depth, distance, orient, viewpoint), native
+# Qwen3.5 tool calls parsed by vLLM (qwen3_coder), instructions in the system prompt; same agent
+# settings as configs/treebench_local/qwen3.5-4b-agent-tb3.yaml.
+# Thinking OFF (enable_thinking: false; no reasoning text). Sampling = Qwen3.5's recommended
+# non-thinking settings for general tasks (model card): temperature 0.7, top_p 0.8, top_k 20,
+# min_p 0, presence_penalty 1.5. Same token budget as the thinking run, so only thinking changes.
+# H100 (bf16) replication of docs/results/qwen35_4b_treebench.md. Differences from the report's runs:
+# bf16 instead of float16, vLLM 0.34 instead of 0.32, and a 3600 s client timeout for every request
+# (the report's 600 s baseline timeout cut off 19 long answers). Own tag (*-h100), so these runs never
+# resume into the committed Quadro runs.
+# Launch: slurm/treebench_qwen35_local.sh 4b tools nothink
+dataset: treebench
+model: vllm:Qwen/Qwen3.5-4B
+model_options:
+  base_url: http://localhost:18431/v1
+  timeout: 3600
+tag: nothink-h100
+prompt: default
+generation:
+  temperature: 0.7
+  top_p: 0.8
+  max_tokens: 32768
+  seed: 0
+  extra:
+    top_k: 20
+    min_p: 0.0
+    presence_penalty: 1.5
+    repetition_penalty: 1.0
+    chat_template_kwargs: {enable_thinking: false}
+agent: tools
+agent_options:
+  instructions: tb3
+  protocol: native
+  instructions_in: system
+  max_steps: 20
+  step_max_tokens: 32768
+concurrency: 16

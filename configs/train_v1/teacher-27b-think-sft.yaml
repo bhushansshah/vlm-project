@@ -1,0 +1,22 @@
+# Teacher traces for SFT arm A2: Qwen3.5-27B thinking on the SFT pool, 1 sample per question (correct ones are kept). Capped at 8K tokens: traces over ~4K are dropped anyway.
+# Data: training/build_data_v1.py -> data/train_v1/sft (TreeBench prompt format). Plan: docs/plans/treebench_sft_rl_plan.md.
+dataset: tbstyle
+data_dir: data/train_v1/sft
+model: vllm:Qwen/Qwen3.5-27B
+model_options:
+  base_url: http://localhost:18431/v1
+  timeout: 3600
+run_name: train_v1__teacher-27b-think__sft
+prompt: default
+generation:
+  max_tokens: 8192
+  temperature: 1.0
+  top_p: 0.95
+  seed: 0
+  extra:
+    top_k: 20
+    min_p: 0.0
+    presence_penalty: 1.5
+    repetition_penalty: 1.0
+    chat_template_kwargs: {enable_thinking: true}
+concurrency: 32

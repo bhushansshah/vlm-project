@@ -1,0 +1,32 @@
+# Teacher trajectories for tool-call SFT (arm B1): the Qwen3.5-27B tb3 agent, thinking off, on the SFT pool.
+# Same agent settings as configs/treebench_h100/qwen3.5-27b-agent-tb3-nothink.yaml (six tools, native calls,
+# instructions in the system prompt). dump_dir saves every finished conversation with its tool images, which
+# training/make_agent_sft.py turns into one training example per assistant turn (correct answers only).
+dataset: tbstyle
+data_dir: data/train_v1/sft
+model: vllm:Qwen/Qwen3.5-27B
+model_options:
+  base_url: http://localhost:18431/v1
+  timeout: 3600
+run_name: train_v1__teacher-27b-agent-nothink__sft
+prompt: default
+generation:
+  temperature: 0.7
+  top_p: 0.8
+  max_tokens: 32768
+  seed: 0
+  extra:
+    top_k: 20
+    min_p: 0.0
+    presence_penalty: 1.5
+    repetition_penalty: 1.0
+    chat_template_kwargs: {enable_thinking: false}
+agent: tools
+agent_options:
+  instructions: tb3
+  protocol: native
+  instructions_in: system
+  max_steps: 20
+  step_max_tokens: 32768
+  dump_dir: data/agent_dumps/teacher-27b-nothink
+concurrency: 16

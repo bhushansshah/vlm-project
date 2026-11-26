@@ -1,0 +1,22 @@
+# Dev-set baseline: Qwen3.5-4B zero-shot, thinking off (TreeBench settings).
+# Data: training/build_data_v1.py -> data/train_v1/dev (TreeBench prompt format). Plan: docs/plans/treebench_sft_rl_plan.md.
+dataset: tbstyle
+data_dir: data/train_v1/dev
+model: vllm:Qwen/Qwen3.5-4B
+model_options:
+  base_url: http://localhost:18432/v1
+  timeout: 3600
+run_name: train_v1__base-4b-nothink__dev
+prompt: default
+generation:
+  max_tokens: 25000
+  temperature: 0.7
+  top_p: 0.8
+  seed: 0
+  extra:
+    top_k: 20
+    min_p: 0.0
+    presence_penalty: 1.5
+    repetition_penalty: 1.0
+    chat_template_kwargs: {enable_thinking: false}
+concurrency: 32

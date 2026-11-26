@@ -267,3 +267,14 @@ class TreeBench(Dataset):
             "cut_off": sum(1 for r in records.values() if r.get("finish_reason") == "length"),
             "note": "Graded locally against TreeBench's public answers; `vlmbench report` works without a judge.",
         }
+
+
+class TreeBenchStyle(TreeBench):
+    """Any multiple-choice set stored in TreeBench's ``questions.jsonl`` schema (e.g. the training and dev
+    splits built by ``training/build_data_v1.py``): same prompt, grading and per-category summary as
+    TreeBench. Point ``--data-dir`` at the folder that holds ``questions.jsonl``; image paths may be absolute."""
+
+    name = "tbstyle"
+
+    def prepare(self, force: bool = False, tsv_path: Path | None = None) -> Path:
+        raise FileNotFoundError(f"no questions.jsonl in {self.data_dir}: build it first (training/build_data_v1.py)")

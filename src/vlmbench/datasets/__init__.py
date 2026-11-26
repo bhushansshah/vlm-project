@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from .base import Dataset, Sample, Selection, select_samples
-from .treebench import TreeBench
+from .treebench import TreeBench, TreeBenchStyle
 from .vistaqa import VistaQA
 from .visualoverload import VisualOverload
 
-DATASETS: dict[str, type[Dataset]] = {d.name: d for d in (VisualOverload, VistaQA, TreeBench)}
+DATASETS: dict[str, type[Dataset]] = {d.name: d for d in (VisualOverload, VistaQA, TreeBench, TreeBenchStyle)}
 
 
 def get_dataset(name: str, data_dir: str | Path | None = None) -> Dataset:

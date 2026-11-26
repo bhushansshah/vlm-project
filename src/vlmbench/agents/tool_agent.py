@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from collections import Counter
 from dataclasses import asdict, replace
 from typing import Any
@@ -303,7 +304,8 @@ class ToolAgent(VLM):
                  tool_options: dict[str, dict[str, Any]] | None = None, max_steps: int = 6,
                  step_max_tokens: int | None = None, keep_last_images: int | None = None, max_retries: int = 3,
                  native_tools: bool = True, instructions: str = "v1", protocol: str = "text",
-                 verify: bool = False, verify_extra_calls: int = 2, instructions_in: str = "user"):
+                 verify: bool = False, verify_extra_calls: int = 2, instructions_in: str = "user",
+                 dump_dir: str | None = None):
         if instructions not in INSTRUCTIONS:
             raise ValueError(f"Unknown instructions {instructions!r}. Available: {sorted(INSTRUCTIONS)}")
         if protocol not in ("text", "native"):
@@ -311,6 +313,9 @@ class ToolAgent(VLM):
         if instructions_in not in ("user", "system"):
             raise ValueError(f"instructions_in must be 'user' or 'system', got {instructions_in!r}")
         self.instructions_in = instructions_in
+        # dump_dir: save each finished conversation (messages, tool specs, every image) for multi-turn SFT.
+        # Not part of the run identity: it does not change what the agent does.
+        self.dump_dir = Path(dump_dir) if dump_dir else None
         self.instructions = instructions
         self.inner = model
         tools = tools or list(INSTRUCTION_TOOLS.get(instructions, ())) or None
@@ -555,7 +560,37 @@ class ToolAgent(VLM):
             trace.append({**step, "final": True})
             break
 
+        if self.dump_dir is not None:
+            self._dump(messages, convo, text, comp.reasoning, cfg.tools, answer, finish)
         return Completion(text=answer, finish_reason=finish, usage=usage, trace=trace)
+
+    def _dump(self, messages, convo, final_text, final_reasoning, tools, answer, finish) -> None:
+        """Write the conversation exactly as the model saw it, plus its final turn, to <dump_dir>/<key>.json.
+        Images: the original by path, tool images saved as PNG. key = sha1(original image path + question)."""
+        import hashlib
+
+        user = next(m for m in messages if m.role == "user")
+        orig = next(p for p in user.content if isinstance(p, ImagePart))
+        question = "".join(p.text for p in user.content if isinstance(p, TextPart))
+        key = hashlib.sha1(f"{orig.image}\n{question}".encode()).hexdigest()[:16]
+        (self.dump_dir / "images").mkdir(parents=True, exist_ok=True)
+        n_img, out = 0, []
+        for m in convo:
+            parts = []
+            for part in m.content:
+                if isinstance(part, TextPart):
+                    parts.append({"type": "text", "text": part.text})
+                elif not isinstance(part.image, Image.Image):
+                    parts.append({"type": "image", "path": str(part.image)})
+                else:
+                    path = self.dump_dir / "images" / f"{key}_{n_img}.png"
+                    part.image.save(path)
+                    n_img += 1
+                    parts.append({"type": "image", "path": str(path)})
+            out.append({"role": m.role, "content": parts, "tool_calls": m.tool_calls, "tool_call_id": m.tool_call_id})
+        rec = {"key": key, "image": str(orig.image), "question": question, "tools": tools, "messages": out,
+               "final_text": final_text, "final_reasoning": final_reasoning, "answer": answer, "finish": finish}
+        (self.dump_dir / f"{key}.json").write_text(json.dumps(rec))
 
 
 def evidence_views(image: Image.Image, box) -> tuple[Image.Image, Image.Image]:

@@ -17,3 +17,6 @@ logs/
 
 # local reference copies of upstream code
 third_party/
+
+# model checkpoints from training/ (large; never commit)
+checkpoints/

@@ -20,6 +20,9 @@ mkdir -p logs
 VLLM_ENV="${VLLM_ENV:-$HOME/venvs/vllm-qwen35}"   # separate env: vLLM needs a newer torch than .venv (CUDA 13 build: H100 driver 580)
 DTYPE="${DTYPE:-auto}"                            # auto = bf16; float16 on Turing GPUs
 PORT="${PORT:-18431}"                             # a second job on the same node needs another PORT
+MODEL="${MODEL:-Qwen/Qwen3.5-4B}"                 # must match the config's model (vllm:<MODEL>)
+TP="${TP:-1}"                                     # tensor parallel size (GPUs from CUDA_VISIBLE_DEVICES)
+GPU_UTIL="${GPU_UTIL:-0.85}"
 CONFIG="${CONFIG:-configs/treebench_local/qwen3.5-4b-think.yaml}"
 
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
@@ -29,23 +32,25 @@ if (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null; then
 fi
 
 # 32768 context = up to ~6.7K image tokens + prompt + 25K output
-"$VLLM_ENV/bin/vllm" serve Qwen/Qwen3.5-4B \
+"$VLLM_ENV/bin/vllm" serve "$MODEL" \
+  --tensor-parallel-size "$TP" \
   --port "$PORT" --host 127.0.0.1 \
   --max-model-len 32768 \
   --dtype "$DTYPE" \
   --reasoning-parser qwen3 \
   --limit-mm-per-prompt '{"image": 1}' \
-  --gpu-memory-utilization 0.85 \
-  > "logs/vllm_qwen35_4b_${SLURM_JOB_ID:-local}.log" 2>&1 &
+  --gpu-memory-utilization "$GPU_UTIL" \
+  ${VLLM_EXTRA_ARGS:-} \
+  > "logs/vllm_qwen35_4b_${SLURM_JOB_ID:-local-$$}.log" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null; wait $SERVER 2>/dev/null' EXIT
 
-for i in $(seq 1 180); do
+for i in $(seq 1 360); do
   if curl -sf "http://127.0.0.1:$PORT/health" > /dev/null; then break; fi
-  if ! kill -0 $SERVER 2>/dev/null; then echo "vLLM exited; see logs/vllm_qwen35_4b_${SLURM_JOB_ID:-local}.log" >&2; exit 1; fi
+  if ! kill -0 $SERVER 2>/dev/null; then echo "vLLM exited; see logs/vllm_qwen35_4b_${SLURM_JOB_ID:-local-$$}.log" >&2; exit 1; fi
   sleep 5
 done
-curl -sf "http://127.0.0.1:$PORT/health" > /dev/null || { echo "vLLM did not come up in 15 min" >&2; exit 1; }
+curl -sf "http://127.0.0.1:$PORT/health" > /dev/null || { echo "vLLM did not come up in 30 min" >&2; exit 1; }
 echo "vLLM ready after ~$((i * 5)) s"
 
 .venv/bin/vlmbench run --config "$CONFIG" -o base_url="http://localhost:$PORT/v1" "$@"
