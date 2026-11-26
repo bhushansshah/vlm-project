@@ -1,10 +1,12 @@
 # Qwen3.5-4B on TreeBench: setup and results
 
-As of 2026-11-25. Baseline complete; tool-agent run queued (smoke test only).
+As of 2026-11-26. Baseline and tool-agent runs complete (405 questions each).
 
 Qwen3.5-4B answers **200 of TreeBench's 405 questions correctly (49.4%, 95% CI 44.5–54.2%)** with thinking on and no tools. Perception questions reach 69.8%; reasoning questions only 37.5%, pulled down by perspective transform (17.6%, below the 25% chance rate) and ordering (26.3%).
 
-The main failure is not missing knowledge. On perspective questions the model judges front and back correctly 69% of the time but left and right only 22%: it answers from the camera's side instead of the person's. A tool agent with six tools is set up to fix this; it scored 3 of 5 on a smoke test (the baseline: 1 of 5), and the full run is queued on the cluster.
+The main failure is not missing knowledge. On perspective questions the model judges front and back correctly 69% of the time but left and right only 22%: it answers from the camera's side instead of the person's.
+
+With six tools and a step-by-step procedure for perspective questions, the same model reaches **228 of 405 (56.3%), 6.9 points above the baseline** (77 questions fixed, 49 broken; McNemar p = 0.016). Perspective transform rises from 17.6% to 55.3%; comparison and contact-and-occlusion drop by 9 and 12 points.
 
 ## Setup
 
@@ -100,9 +102,9 @@ For "the third one from the left" or "the second closest", the reasoning over th
 
 Wrong answers think longer: a median of 2,600 output tokens against 1,459 for right ones. Perspective questions are the exception: the few right answers think longer (3,922 against 2,525 thinking tokens), which fits working through the person's point of view instead of the camera's.
 
-## Tool agent (in progress)
+## Tool agent: 56.3%, up 6.9 points
 
-The same model, weights and sampling get six tools that it calls one at a time before answering. The full run of the remaining 400 questions is submitted as two jobs and is still queued for GPUs.
+The same model, weights and sampling get six tools that it calls one at a time before answering. On all 405 questions it scores 228 (56.3%), against 200 for the baseline; the gain comes almost entirely from perspective questions. The run finished on 2026-11-26 on two Quadro GPUs.
 
 | Tool | What it does | Network |
 | --- | --- | --- |
@@ -119,17 +121,46 @@ What changes from the baseline:
 - **Tool calls:** in Qwen3.5's own format, parsed by vLLM (`qwen3_coder`). One call per reply, up to 20 per question.
 - **Limits:** 32,768 output tokens per turn, 131,072-token context, 3,600-second timeout. The thinking of every turn is saved.
 
-### Smoke test (5 questions)
+### Results
 
-| Question | Category | Gold | Agent | Baseline | Tool calls that ran | Time |
-| --- | --- | --- | --- | --- | --- | --- |
-| tb003 | Perspective (nearer to camera) | A | A | A | none | 67 s |
-| tb261 | Attributes (price on a menu) | C | C | A | zoom, detect, zoom, zoom | 155 s |
-| tb071 | Perspective | D | D | A | orient, viewpoint, viewpoint | 217 s |
-| tb133 | Ordering (streetlights) | C | B | B | detect, zoom | 208 s |
-| tb037 | Perspective | D | C | C | orient, viewpoint | 361 s |
+| | Baseline | Agent |
+| --- | --- | --- |
+| Correct | 200 / 405 (49.4%) | **228 / 405 (56.3%)** |
+| 95% CI | 44.5–54.2% | 51.4–61.0% |
+| Question by question | | 77 fixed, 49 broken (McNemar p = 0.016) |
+| No answer (timed out or aborted) | 28 | 0 |
+| Median output tokens per question | 2,087 | 3,380 |
+| Median time per question | 219 s | 294 s |
+| GPU time | about 8 hours | about 3 hours |
 
-The agent fixed two of the baseline's errors and kept two. The test also showed two small problems, both fixed before the full run: the model sometimes called a made-up "answer" tool, and once put the facing argument in the wrong place. Five questions say nothing yet about accuracy; the results will be added when the run finishes.
+![Tools lift perspective by 38 points; comparison and contact drop](qwen35_4b_treebench_agent_vs_baseline.png)
+
+| Category | n | Baseline | Agent | Change (points) | Fixed / broken |
+| --- | --- | --- | --- | --- | --- |
+| Perspective transform | 85 | 17.6% | **55.3%** | +37.6 | 39 / 7 |
+| Ordering | 57 | 26.3% | 36.8% | +10.5 | 15 / 9 |
+| Attributes | 29 | 55.2% | 62.1% | +6.9 | 4 / 2 |
+| Material | 13 | 46.2% | 46.2% | 0 | 1 / 1 |
+| Physical state | 23 | 60.9% | 60.9% | 0 | 2 / 2 |
+| Spatial containment | 29 | 79.3% | 79.3% | 0 | 2 / 2 |
+| OCR | 68 | 82.4% | 80.9% | −1.5 | 5 / 6 |
+| Comparison | 44 | 47.7% | 38.6% | −9.1 | 5 / 9 |
+| Contact and occlusion | 41 | 53.7% | 41.5% | −12.2 | 3 / 8 |
+| Object retrieval | 16 | 75.0% | 62.5% | −12.5 | 1 / 3 |
+
+### How it used the tools
+
+- 2.1 calls per question on average, at most 14, never near the 20-call cap. 94 questions were answered without a tool (52% right), the other 311 with tools (58% right).
+- Calls: zoom 409, detect 217, orient 105, viewpoint 81, depth 11, distance 7. Of 842 calls, 36 failed: orient 14 (no shoulders found), a made-up "answer" tool 11 (recovered), viewpoint 7, zoom 4.
+- On perspective questions, viewpoint ran on 62 of 85; 40 of those were right (65%), against 7 of the 23 where it was skipped (30%).
+
+### Where it helps and where it hurts
+
+- **Perspective (+37.6 points):** orient then viewpoint fixes the mirrored left and right: 39 questions fixed, 7 broken.
+- **Ordering (+10.5):** nothing timed out this time, and detect's numbered boxes help counting; it still misses objects (9 broken).
+- **Comparison (−9.1) and contact and occlusion (−12.2):** 7 of the 9 newly wrong comparison answers followed a detect call, and 7 of the 8 newly wrong contact answers followed a zoom. A cropped or boxed view seems to lose the context these questions need; these traces are the next thing to read.
+
+A 5-question smoke test before the full run found two small problems, both fixed before it: the model sometimes called a made-up "answer" tool, and once put the facing argument in the wrong place.
 
 ## Reproduce
 
@@ -142,6 +173,7 @@ Everything is in this repository on branch `treebench-small-qwen-notools`.
 | Agent config and job | `configs/treebench_local/qwen3.5-4b-agent-tb3.yaml`, `slurm/treebench_qwen35_4b_agent.sh` |
 | Exact agent prompt | `reports/qwen35_4b_agent_tb3_prompt.txt` |
 | Baseline answers, with thinking (Git LFS) | `runs/treebench__vllm__Qwen_Qwen3.5-4B__default__think-fp16` and `…-part2` |
+| Agent answers, with every step's thinking and tool calls (Git LFS) | `runs/treebench__vllm__Qwen_Qwen3.5-4B__default__agent-tools-tb3-native-sys__think-fp16` and `…-part2` |
 | Failure analysis | `analysis/treebench_failures.py` |
 
 Run the baseline with `sbatch --nodelist=quadro2 slurm/treebench_qwen35_4b.sh` and the agent with `sbatch slurm/treebench_qwen35_4b_agent.sh`; a re-run skips questions already answered. The failure analysis is `python analysis/treebench_failures.py --out <dir> <run folders>`. The trace portal, kept locally and not in the repository (`python portal/serve.py`), shows every answer with its thinking and, for agent runs, each tool step.
