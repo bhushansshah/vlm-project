@@ -1,0 +1,226 @@
+{
+  "n_questions": 200,
+  "n_errors": 0,
+  "error_types": {},
+  "per_category": {
+    "Perception/Attributes": {
+      "n": 14,
+      "errors": 0
+    },
+    "Perception/Material": {
+      "n": 6,
+      "errors": 0
+    },
+    "Perception/OCR": {
+      "n": 33,
+      "errors": 0
+    },
+    "Perception/Object Retrieval": {
+      "n": 8,
+      "errors": 0
+    },
+    "Perception/Physical State": {
+      "n": 13,
+      "errors": 0
+    },
+    "Reasoning/Comparison": {
+      "n": 22,
+      "errors": 0
+    },
+    "Reasoning/Contact and Occlusion": {
+      "n": 21,
+      "errors": 0
+    },
+    "Reasoning/Ordering": {
+      "n": 28,
+      "errors": 0
+    },
+    "Reasoning/Perspective Transform": {
+      "n": 41,
+      "errors": 0
+    },
+    "Reasoning/Spatial Containment": {
+      "n": 14,
+      "errors": 0
+    }
+  },
+  "finish_reasons": {
+    "no_answer_tag": 16,
+    "stop": 184
+  },
+  "tokens": {
+    "input": 4371399,
+    "output": 905547,
+    "reasoning": 856256,
+    "cached": null
+  },
+  "cost": {
+    "usd": null,
+    "calls_with_cost": 0,
+    "calls": 200
+  },
+  "latency_s": {
+    "median": 326.596,
+    "p95": 960.534
+  },
+  "tool_use": {
+    "questions": 200,
+    "used_any_tool": 0.76,
+    "mean_tool_calls": 1.98,
+    "calls_per_tool": {
+      "zoom": 195,
+      "detect": 101,
+      "orient": 51,
+      "viewpoint": 40,
+      "answer": 4,
+      "depth": 3,
+      "distance": 2
+    },
+    "failed_calls_per_tool": {
+      "orient": 6,
+      "viewpoint": 2,
+      "answer": 4
+    },
+    "no_answer_tag": 16
+  },
+  "evidence": {
+    "answers": 200,
+    "with_evidence": 93,
+    "mean_iou": 13.6,
+    "mean_iou_when_cited": 29.2,
+    "inspected_target_rate": 64.5
+  },
+  "accuracy": {
+    "overall": {
+      "n": 200,
+      "correct": 108,
+      "acc": 54.0,
+      "ci95": [
+        47.1,
+        60.8
+      ]
+    },
+    "per_group": {
+      "Perception": {
+        "n": 74,
+        "correct": 51,
+        "acc": 68.92,
+        "ci95": [
+          57.7,
+          78.3
+        ]
+      },
+      "Reasoning": {
+        "n": 126,
+        "correct": 57,
+        "acc": 45.24,
+        "ci95": [
+          36.8,
+          53.9
+        ]
+      }
+    },
+    "per_category": {
+      "Perception/Attributes": {
+        "n": 14,
+        "correct": 8,
+        "acc": 57.14,
+        "ci95": [
+          32.6,
+          78.6
+        ]
+      },
+      "Perception/Material": {
+        "n": 6,
+        "correct": 2,
+        "acc": 33.33,
+        "ci95": [
+          9.7,
+          70.0
+        ]
+      },
+      "Perception/OCR": {
+        "n": 33,
+        "correct": 29,
+        "acc": 87.88,
+        "ci95": [
+          72.7,
+          95.2
+        ]
+      },
+      "Perception/Object Retrieval": {
+        "n": 8,
+        "correct": 5,
+        "acc": 62.5,
+        "ci95": [
+          30.6,
+          86.3
+        ]
+      },
+      "Perception/Physical State": {
+        "n": 13,
+        "correct": 7,
+        "acc": 53.85,
+        "ci95": [
+          29.1,
+          76.8
+        ]
+      },
+      "Reasoning/Comparison": {
+        "n": 22,
+        "correct": 8,
+        "acc": 36.36,
+        "ci95": [
+          19.7,
+          57.0
+        ]
+      },
+      "Reasoning/Contact and Occlusion": {
+        "n": 21,
+        "correct": 9,
+        "acc": 42.86,
+        "ci95": [
+          24.5,
+          63.5
+        ]
+      },
+      "Reasoning/Ordering": {
+        "n": 28,
+        "correct": 6,
+        "acc": 21.43,
+        "ci95": [
+          10.2,
+          39.5
+        ]
+      },
+      "Reasoning/Perspective Transform": {
+        "n": 41,
+        "correct": 22,
+        "acc": 53.66,
+        "ci95": [
+          38.7,
+          67.9
+        ]
+      },
+      "Reasoning/Spatial Containment": {
+        "n": 14,
+        "correct": 12,
+        "acc": 85.71,
+        "ci95": [
+          60.1,
+          96.0
+        ]
+      }
+    }
+  },
+  "answer_letters": {
+    "A": 59,
+    "B": 51,
+    "C": 56,
+    "D": 17,
+    "F": 1,
+    "none": 16
+  },
+  "cut_off": 0,
+  "note": "Graded locally against TreeBench's public answers; `vlmbench report` works without a judge."
+}
