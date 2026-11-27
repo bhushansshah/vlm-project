@@ -12,7 +12,7 @@ from .base import VLM, NonRetryableError
 
 log = logging.getLogger(__name__)
 
-# The API rejects images above 5 MB; some VisualOverload JPEGs exceed this once base64-encoded,
+# The API rejects images above 5 MB; some large JPEGs exceed this once base64-encoded,
 # so those are re-encoded (quality first, then size) just enough to fit. The API also
 # downscales large images server-side, so this rarely changes what the model sees.
 _MAX_IMAGE_B64_BYTES = 5 * 1024 * 1024

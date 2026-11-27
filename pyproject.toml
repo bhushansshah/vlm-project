@@ -1,7 +1,7 @@
 [project]
 name = "vlmbench"
 version = "0.1.0"
-description = "Model-agnostic VLM inference pipelines for the VisualOverload dense-scene VQA benchmark"
+description = "Model-agnostic VLM inference pipelines and agents for dense-scene VQA benchmarks"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

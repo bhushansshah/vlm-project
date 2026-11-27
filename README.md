@@ -1,17 +1,15 @@
 # vlmbench: VLM baselines and agents on dense-scene VQA
 
 Course project: *Studying the Performance of VLM Agents on VQA Tasks for Dense Datasets*.
-This repo implements **pipeline 1, the base VLM** (`A = VLM(I, Q)`) and **pipeline 2, a tool-augmented agent**, on three benchmarks:
+This repo implements **pipeline 1, the base VLM** (`A = VLM(I, Q)`) and **pipeline 2, a tool-augmented agent**, on two benchmarks:
 
-- [VisualOverload](https://github.com/paulgavrikov/visualoverload) (CVPR 2026): 2,720 questions on dense paintings; ground truth is **private** (scored by the authors' server).
 - [VistaQA](https://vistaqa.github.io) (NeurIPS 2026 D&B): 1,157 free-form questions, six task types, six domains, 27% "trick" questions about things not in the image; answers are **public**, so we grade locally with an LLM judge.
 - [TreeBench](https://huggingface.co/datasets/HaochenWang/TreeBench) (Wang et al. 2025): 405 multiple-choice questions on dense SA-1B photos (~3.4 MP), 10 categories (5 perception, 5 reasoning); answers **and target-object boxes** are public, so answers are graded by rule (no judge).
 
 It works with any backend: OpenAI, Anthropic, Gemini, OpenRouter, a local OpenAI-compatible server (vLLM / SGLang /
 Ollama), or in-process HF transformers.
 
-Background: [docs/PROPOSAL.md](docs/PROPOSAL.md) (project plan and timeline) and
-[docs/VISUALOVERLOAD_NOTES.md](docs/VISUALOVERLOAD_NOTES.md) (benchmark facts and open design questions).
+Background: [docs/PROPOSAL.md](docs/PROPOSAL.md) (project plan and timeline).
 
 ## Setup
 
@@ -20,9 +18,8 @@ uv venv --python 3.12 .venv && source .venv/bin/activate
 uv pip install -e ".[api,dev]"        # API backends
 uv pip install -e ".[local]"          # + torch/transformers for in-process local models
 cp .env.example .env                  # add the API keys you need
-vlmbench prepare                      # VisualOverload (~630 MB, once)
+vlmbench prepare --dataset treebench  # TreeBench (~290 MB, once; the default dataset)
 vlmbench prepare --dataset vistaqa    # VistaQA (~440 MB, once)
-vlmbench prepare --dataset treebench  # TreeBench (~290 MB, once)
 ```
 
 Each dataset goes to `data/<dataset>/` with a `questions.jsonl` index. Set `VLMBENCH_DATA_DIR` to put
@@ -31,12 +28,12 @@ the data on scratch storage instead.
 ## Running the baseline
 
 ```bash
-# quick, cheap smoke test on a random subset
-vlmbench run --model openrouter:qwen/qwen2.5-vl-72b-instruct --limit 20 --shuffle-seed 0
+# quick, cheap smoke test on a random subset (TreeBench unless --dataset says otherwise)
+vlmbench run --model openrouter:qwen/qwen2.5-vl-72b-instruct --limit 20 --sample-seed 0
 
 # full benchmark from a config file (CLI flags override config values)
-vlmbench run --config configs/openrouter_qwen25vl_72b.yaml
-vlmbench run --config configs/gemini_25_flash.yaml --categories counting ocr
+vlmbench run --config configs/treebench/qwen3.8-27b.yaml
+vlmbench run --config configs/vistaqa/qwen3.8-27b.yaml --categories counting ocr
 ```
 
 ### VistaQA: run, judge, report
@@ -75,9 +72,9 @@ Model spec = `<provider>:<model>`:
 
 | provider | example | notes |
 |---|---|---|
-| `openai` | `openai:gpt-5-mini` | Responses API (as in the paper). `-o image_detail=high` |
+| `openai` | `openai:gpt-5-mini` | Responses API. `-o image_detail=high` |
 | `anthropic` | `anthropic:claude-sonnet-5-5` | images > 5 MB are re-encoded to fit (logged) |
-| `gemini` | `gemini:gemini-2.5-flash` | safety filters off (as in the paper). `-o media_resolution=MEDIA_RESOLUTION_HIGH` |
+| `gemini` | `gemini:gemini-2.5-flash` | safety filters off. `-o media_resolution=MEDIA_RESOLUTION_HIGH` |
 | `openrouter` | `openrouter:qwen/qwen2.5-vl-72b-instruct` | any OpenRouter vision model |
 | `vllm` / `ollama` / `openai-compat` | `vllm:Qwen/Qwen2.5-VL-7B-Instruct -o base_url=http://node:8000/v1` | locally served models |
 | `local` | `local:Qwen/Qwen2.5-VL-7B-Instruct` | in-process HF `AutoModelForImageTextToText`; greedy, 512 tokens, bf16 |
@@ -97,7 +94,7 @@ Each run writes `runs/<run_name>/`:
 - `config.json`: the full run configuration and backend description
 - `responses.jsonl`: one record per question with the raw response, finish reason, token usage, latency, and error
 - `summary.json`: errors, tokens, latency, plus dataset-specific diagnostics
-- VisualOverload: `submission.json` (upload to the evaluation server); VistaQA: `predictions.json`, and `judgments.jsonl` after `vlmbench judge`
+- VistaQA: `predictions.json`, and `judgments.jsonl` after `vlmbench judge`
 
 **Cost.** Every saved usage record (answers, agent steps, judgments) has `cached_tokens` and `cost` (USD)
 next to the token counts. A field is `null` when the provider does not report it: OpenRouter reports both;
@@ -108,26 +105,12 @@ neither. `summary.json` and `vlmbench judge` print the total, and `vlmbench repo
 Runs are **resumable**: re-running the same command skips finished questions, so an interrupted or
 preempted job just continues. `--retry-errors` re-runs only the questions that failed.
 
-**VisualOverload ground truth is private.** Accuracy comes only from the official evaluator:
-upload `submission.json` at https://huggingface.co/spaces/paulgavrikov/visualoverload-submit
-(HF login; rate-limited per day, so don't burn submissions on partial runs: missing questions count as wrong).
-Locally we use a port of the server's answer extraction (`src/vlmbench/datasets/visualoverload_extract.py`), so the
-`parse_rate` in `summary.json` tells you whether the server will be able to read your answers.
+## Defaults
 
-## Faithfulness to the VisualOverload protocol
-
-- Prompt `default` = the dataset's `default_prompt` (the authors' prompts), image first, no system prompt.
-- Open-weight models: greedy decoding, `max_new_tokens=512`, processor-default resolution (as in the authors' `models.py`).
 - APIs: provider defaults, **no reasoning/thinking** unless you ask for it. OpenRouter enables reasoning
   by default for some models (e.g. Claude Haiku 5.5); disable it with `-g 'reasoning={enabled: false}'`.
 - Images are sent at full resolution. Downscaling happens only if you set `-o max_side=...`/`-o max_pixels=...`,
-  or to meet a hard API limit (Anthropic 5 MB: 48 of 150 images get re-encoded at JPEG q=85, same resolution).
-- Submission: raw responses, with markdown emphasis stripped (`**1557**` → `1557`), which the server's
-  OCR cleaning doesn't handle. The paper explicitly allows client-side preprocessing.
-- Binary yes/no questions are scored **pairwise** with their logical opposite by the server.
-
-Reference numbers (paper Table 1, total accuracy): o3 69.5, Gemini 2.0 Flash 68.1,
-InternVL3-38B 67.6, Qwen2.5-VL-72B 65.7, Qwen2.5-VL-7B 61.5, random 16.0.
+  or to meet a hard API limit (Anthropic 5 MB: such images are re-encoded at JPEG q=85, same resolution).
 
 ## Tool-augmented agent (pipeline 2)
 
@@ -206,7 +189,7 @@ The login node caps each user at 4 GB RAM, so run model inference only inside Sl
 ```bash
 srun -p defq --gres=gpu:1 --cpus-per-task=8 --mem=64G --time=4:00:00 --pty bash
 source .venv/bin/activate
-vlmbench run --config configs/local_qwen25vl_7b.yaml
+vlmbench run --model local:Qwen/Qwen2.5-VL-7B-Instruct --dataset treebench
 ```
 
 Tests: `pytest`.

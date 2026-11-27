@@ -62,7 +62,7 @@ def test_prepare_and_prompts(treebench):
 
 @pytest.mark.parametrize("resp,expected", [
     ("B", "B"), ("**C**", "C"), ("(D)", "D"), ("<answer>B</answer>", "B"),
-    # the VisualOverload judge reads these as "A" (first letter anywhere in the text)
+    # a first-letter-anywhere extractor reads these as "A"
     ("Above the cart is an umbrella; the top stripe is yellow.\n\nTherefore, the correct option is B.\n\nB", "B"),
     ("Let's call this Person A. ... the direction is **Front right**.\n\nB", "B"),
     ("Looking closely, the answer is **C**.", "C"), ("Correct Option: **B**", "B"),

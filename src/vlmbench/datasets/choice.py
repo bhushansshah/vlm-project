@@ -1,10 +1,8 @@
 """Reading the letter a model chose, for multiple-choice benchmarks we grade ourselves.
 
-The VisualOverload judge (``visualoverload_extract.clean_multiple_choice_answer``) falls back to
-the first option letter appearing *anywhere* in a reply, which misreads explanations ("Above
-the cart ... so the answer is B" -> "A"). That is right for VisualOverload, where we must match
-the official server, but wrong for benchmarks with public answers. This module only accepts a
-letter the reply clearly commits to.
+A lenient extractor that falls back to the first option letter appearing *anywhere* in a reply
+misreads explanations ("Above the cart ... so the answer is B" -> "A"). This module only accepts
+a letter the reply clearly commits to.
 """
 
 from __future__ import annotations

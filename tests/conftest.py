@@ -3,7 +3,7 @@ import json
 import pytest
 from PIL import Image
 
-from vlmbench.datasets import VistaQA, VisualOverload
+from vlmbench.datasets import VistaQA
 from vlmbench.types import Completion
 
 
@@ -31,22 +31,6 @@ def vistaqa(tmp_path, image_path):
         })
     _write_index(tmp_path / "vistaqa", rows)
     return VistaQA(tmp_path / "vistaqa")
-
-
-@pytest.fixture
-def visualoverload(tmp_path, image_path):
-    rows = [
-        {"question_id": "q1", "image": image_path, "question": "Is it day?", "question_type": "choice",
-         "options": ["yes", "no"], "difficulty": "easy", "category": "scene",
-         "default_prompt": "Is it day? Options:\nA. yes\nB. no\nAnswer with the option's letter from the given choices directly."},
-        {"question_id": "q2", "image": image_path, "question": "How many cups?", "question_type": "counting",
-         "options": [], "difficulty": "hard", "category": "counting",
-         "default_prompt": "How many cups? Answer with a number directly."},
-        {"question_id": "q3", "image": image_path, "question": "What year?", "question_type": "ocr",
-         "options": [], "difficulty": "medium", "category": "ocr", "default_prompt": "What year? Answer directly."},
-    ]
-    _write_index(tmp_path / "visualoverload", rows)
-    return VisualOverload(tmp_path / "visualoverload")
 
 
 class Flaky:

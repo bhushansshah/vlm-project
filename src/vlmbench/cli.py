@@ -159,14 +159,14 @@ def main(argv: list[str] | None = None) -> None:
     datasets = sorted(DATASETS)
 
     pp = sub.add_parser("prepare", help="download and extract a benchmark")
-    pp.add_argument("--dataset", default="visualoverload", choices=datasets)
+    pp.add_argument("--dataset", default="treebench", choices=datasets)
     pp.add_argument("--data-dir")
     pp.add_argument("--force", action="store_true")
     pp.set_defaults(func=cmd_prepare)
 
     pr = sub.add_parser("run", help="run a model over a benchmark")
     pr.add_argument("--config", help="YAML run config (CLI flags override it)")
-    pr.add_argument("--dataset", choices=datasets, help="benchmark (default: visualoverload)")
+    pr.add_argument("--dataset", choices=datasets, help="benchmark (default: treebench)")
     pr.add_argument("--model", help=f"<provider>:<model>, providers: {', '.join(available_providers())}")
     pr.add_argument("-o", "--opt", action="append", metavar="KEY=VALUE",
                     help="backend option, e.g. -o image_detail=high -o base_url=http://node:8000/v1")

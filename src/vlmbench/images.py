@@ -1,7 +1,7 @@
 """Image preprocessing and encoding for API backends.
 
-VisualOverload images are ~4K (~8.3 MP, 1.5-4 MB JPEGs). Resolution is the
-variable under study, so we never resize silently: by default the original bytes are
+Dense-scene images are large (TreeBench ~3.4 MP). Resolution is a variable under
+study, so we never resize silently: by default the original bytes are
 sent as-is, and an image is only downscaled / re-encoded when it violates an explicit
 ``ImagePolicy`` (user-set ``max_side`` / ``max_pixels``, or a hard provider byte limit).
 Every transformation is logged once per (image, policy) via ``EncodedImage.transform``.

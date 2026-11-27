@@ -6,7 +6,7 @@ Layout of a run directory::
         config.json       # everything needed to reproduce the run
         responses.jsonl   # one record per answered question (append-only, latest wins)
         summary.json      # errors, tokens, latency + dataset-specific diagnostics
-        ...               # dataset-specific outputs (e.g. submission.json, predictions.json)
+        ...               # dataset-specific outputs (e.g. predictions.json)
         judgments.jsonl   # written later by `vlmbench judge` (datasets with public answers)
 """
 
@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class RunConfig:
     model: str  # "<provider>:<model>"
-    dataset: str = "visualoverload"
+    dataset: str = "treebench"
     model_options: dict[str, Any] = field(default_factory=dict)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
     prompt: str = "default"
@@ -129,7 +129,7 @@ class Runner:
         if cfg_path.exists():
             previous = json.loads(cfg_path.read_text())
             # fill in fields added after a run was created, so old runs still resume
-            previous.setdefault("dataset", "visualoverload")
+            previous.setdefault("dataset", "visualoverload")  # runs made before the field (that dataset is removed)
             previous.setdefault("agent", None)
             previous.setdefault("agent_options", {})
             previous["generation"] = {**GenerationConfig().to_dict(), **previous.get("generation", {})}
